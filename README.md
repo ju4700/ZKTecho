@@ -33,9 +33,9 @@ A comprehensive web-based employee management system designed to work with ZKTec
 
 - **Frontend**: Next.js 15 with TypeScript
 - **Backend**: Next.js API Routes
-- **Database**: SQLite with Prisma ORM
+- **Database**: MongoDB with Mongoose ODM
 - **UI**: Tailwind CSS
-- **ZKTeco Integration**: node-zklib
+- **ZKTeco Integration**: zklib
 - **Icons**: Lucide React
 
 ## Prerequisites
@@ -77,10 +77,18 @@ A comprehensive web-based employee management system designed to work with ZKTec
    JWT_SECRET="your-super-secret-jwt-key-change-this-in-production"
    ```
 
-4. **Setup database**
+4. **Setup MongoDB**
    ```bash
-   npx prisma generate
-   npx prisma db push
+   # Install MongoDB (Ubuntu/Debian)
+   sudo apt update
+   sudo apt install mongodb
+   
+   # Start MongoDB service
+   sudo systemctl start mongod
+   sudo systemctl enable mongod
+   
+   # Or using Docker
+   docker run -d -p 27017:27017 --name mongodb mongo:latest
    ```
 
 5. **Start the development server**

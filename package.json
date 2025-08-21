@@ -21,7 +21,6 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "recharts": "^3.1.2",
-    "sqlite3": "^5.1.7",
     "zklib": "^0.2.11"
   },
   "devDependencies": {
