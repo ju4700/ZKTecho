@@ -46,7 +46,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Employee not found' }, { status: 404 })
     }
 
-    // Check if salary already calculated for this month
     const existingSalary = await Salary.findOne({
       employeeId,
       month,
@@ -60,11 +59,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Calculate salary based on attendance
     const startDate = new Date(year, month - 1, 1)
     const endDate = new Date(year, month, 0)
 
-    // Get attendance records for the month
     const attendances = await Attendance.find({
       employeeId,
       timestamp: {
@@ -73,7 +70,6 @@ export async function POST(request: NextRequest) {
       }
     }).sort({ timestamp: 1 })
 
-    // Calculate working days
     const workingDays = new Set()
     attendances.forEach(attendance => {
       const dateStr = attendance.timestamp.toDateString()
@@ -81,11 +77,10 @@ export async function POST(request: NextRequest) {
     })
 
     const actualWorkingDays = workingDays.size
-    const totalWorkingDays = getDaysInMonth(year, month) // Simplified - assume all days are working days
+    const totalWorkingDays = getDaysInMonth(year, month)
     const dailySalary = employee.monthlySalary / totalWorkingDays
     const calculatedSalary = dailySalary * actualWorkingDays
 
-    // Create salary record
     const salary = await Salary.create({
       employeeId,
       month,

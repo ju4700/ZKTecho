@@ -23,7 +23,6 @@ export class SalaryCalculator {
       switch (attendance.type) {
         case 'CHECK_IN':
           if (currentSession && currentSession.checkIn && !currentSession.checkOut) {
-            // Previous session wasn't closed properly, close it at end of day
             currentSession.checkOut = endOfDay(currentSession.checkIn)
             this.finalizeSession(currentSession as WorkSession)
             sessions.push(currentSession as WorkSession)
@@ -48,7 +47,6 @@ export class SalaryCalculator {
       }
     }
 
-    // Handle unclosed session
     if (currentSession && currentSession.checkIn && !currentSession.checkOut) {
       currentSession.checkOut = endOfDay(currentSession.checkIn)
       this.finalizeSession(currentSession as WorkSession)

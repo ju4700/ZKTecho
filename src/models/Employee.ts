@@ -58,7 +58,6 @@ const EmployeeSchema = new Schema<IEmployee>({
   timestamps: true
 })
 
-// Only keep necessary indexes to avoid duplicates
 EmployeeSchema.index({ deviceUserId: 1 })
 EmployeeSchema.index({ isActive: 1 })
 

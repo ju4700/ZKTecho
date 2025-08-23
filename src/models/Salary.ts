@@ -80,7 +80,6 @@ const SalarySchema = new Schema<ISalary>({
   timestamps: true
 })
 
-// Indexes
 SalarySchema.index({ employeeId: 1, year: -1, month: -1 })
 SalarySchema.index({ isPaid: 1 })
 

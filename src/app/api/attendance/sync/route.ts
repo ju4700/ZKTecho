@@ -8,7 +8,6 @@ export async function POST() {
   try {
     await connectDB()
     
-    // Get attendance logs from ZKTeco device
     const logs = await zktecoService.getAttendanceLogs()
     
     if (logs.length === 0) {
@@ -20,7 +19,6 @@ export async function POST() {
 
     for (const log of logs) {
       try {
-        // Find employee by device user ID
         const employee = await Employee.findOne({ 
           deviceUserId: log.deviceUserId 
         })
@@ -30,7 +28,6 @@ export async function POST() {
           continue
         }
 
-        // Check if this attendance record already exists
         const existingAttendance = await Attendance.findOne({
           employeeId: employee._id.toString(),
           deviceUserId: log.deviceUserId,
@@ -38,10 +35,9 @@ export async function POST() {
         })
 
         if (existingAttendance) {
-          continue // Skip duplicate
+          continue
         }
 
-        // Determine attendance type (alternating check-in/check-out)
         const lastAttendance = await Attendance.findOne({
           employeeId: employee._id.toString()
         }).sort({ timestamp: -1 })
@@ -51,7 +47,6 @@ export async function POST() {
           attendanceType = 'CHECK_OUT'
         }
 
-        // Create attendance record
         await Attendance.create({
           employeeId: employee._id.toString(),
           deviceUserId: log.deviceUserId,

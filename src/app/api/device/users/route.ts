@@ -44,7 +44,6 @@ async function addUserToDevice(employeeId: string, userData: UserData) {
 
     const deviceUserId = employee.deviceUserId || employee.employeeId
 
-    // Add user to ZKTeco device
     const success = await zktecoService.addUser(
       deviceUserId,
       employee.name,
@@ -55,7 +54,6 @@ async function addUserToDevice(employeeId: string, userData: UserData) {
     if (success) {
       await zktecoService.saveDataToDevice()
       
-      // Update employee record
       employee.deviceUserId = deviceUserId
       employee.lastSyncedAt = new Date()
       await employee.save()
@@ -91,7 +89,6 @@ async function deleteUserFromDevice(employeeId: string) {
     if (success) {
       await zktecoService.saveDataToDevice()
       
-      // Update employee record
       employee.deviceUserId = undefined
       employee.fingerprintEnrolled = false
       employee.fingerprintDate = undefined
@@ -124,7 +121,6 @@ async function syncUserToDevice(employeeId: string) {
 
     const deviceUserId = employee.deviceUserId || employee.employeeId
 
-    // Delete existing user, then add updated one
     await zktecoService.deleteUser(deviceUserId)
     const success = await zktecoService.addUser(
       deviceUserId,
@@ -170,7 +166,6 @@ async function enrollFingerprint(employeeId: string) {
       }, { status: 400 })
     }
 
-    // Mark fingerprint as enrolled (actual enrollment happens on device)
     employee.fingerprintEnrolled = true
     employee.fingerprintDate = new Date()
     await employee.save()

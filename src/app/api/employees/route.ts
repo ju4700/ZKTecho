@@ -23,7 +23,6 @@ export async function POST(request: NextRequest) {
     
     const { employeeId, name, phone, monthlySalary } = body
     
-    // Validate required fields
     if (!employeeId || !name || !monthlySalary) {
       return NextResponse.json(
         { error: 'Employee ID, name, and monthly salary are required' },
@@ -31,7 +30,6 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    // Check if employee ID already exists
     const existingEmployee = await Employee.findOne({ employeeId })
     if (existingEmployee) {
       return NextResponse.json(

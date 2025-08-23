@@ -3,7 +3,6 @@ import { zktecoService } from '@/lib/zkteco'
 
 export async function GET() {
   try {
-    // Try to connect to the device and get basic info
     const isConnected = await zktecoService.connect()
     
     if (isConnected) {

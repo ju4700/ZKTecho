@@ -1,8 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// Import with conditional loading to avoid build issues
 let ZKLib: unknown = null
-
-// Dynamically import only in Node.js environment
 const loadZKLib = async () => {
   if (typeof window === 'undefined' && !ZKLib) {
     try {
@@ -149,7 +146,7 @@ export class ZKTecoService {
         userId: userId,
         name: name,
         password: password || '',
-        role: role, // 0 = Normal User, 14 = Admin
+        role: role,
         cardno: cardno || ''
       }
       const result = await (this.zkLib as any).setUser(userId, userObj)

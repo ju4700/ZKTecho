@@ -20,7 +20,6 @@ export async function GET(
       return NextResponse.json({ error: 'Employee not found' }, { status: 404 })
     }
 
-    // Get recent attendance records
     const attendances = await Attendance.find({ 
       employeeId: id 
     }).sort({ timestamp: -1 }).limit(50)
@@ -79,7 +78,6 @@ export async function DELETE(
       return NextResponse.json({ error: 'Employee not found' }, { status: 404 })
     }
 
-    // Also delete related attendance records
     await Attendance.deleteMany({ employeeId: id })
 
     return NextResponse.json({ message: 'Employee deleted successfully' })

@@ -10,7 +10,7 @@ interface NetworkDevice {
 
 export class DeviceDiscoveryService {
   private commonIPs = [
-    '192.168.1.201', // Default ZKTeco IP
+    '192.168.1.201',
     '192.168.0.201',
     '192.168.1.100',
     '192.168.0.100'
@@ -19,14 +19,11 @@ export class DeviceDiscoveryService {
   async scanNetwork(): Promise<NetworkDevice[]> {
     const devices: NetworkDevice[] = []
     
-    // Get current network range dynamically
     const networkRange = await this.getNetworkRange()
     const ipsToScan = [...this.commonIPs, ...networkRange]
     
-    // Remove duplicates
     const uniqueIPs = [...new Set(ipsToScan)]
     
-    // Scan each IP concurrently with timeout
     const scanPromises = uniqueIPs.map(ip => this.scanSingleDevice(ip))
     const results = await Promise.allSettled(scanPromises)
     
@@ -41,7 +38,6 @@ export class DeviceDiscoveryService {
 
   private async scanSingleDevice(ip: string): Promise<NetworkDevice | null> {
     try {
-      // Create a temporary ZKTeco service for this IP
       const { ZKTecoService } = await import('./zkteco')
       const tempService = new ZKTecoService(ip, 4370, 3000)
       
@@ -61,7 +57,6 @@ export class DeviceDiscoveryService {
         }
       }
     } catch (error) {
-      // Silent fail for network scanning
       console.debug(`Failed to connect to ${ip}:`, error)
     }
     
@@ -69,15 +64,12 @@ export class DeviceDiscoveryService {
   }
 
   private async getNetworkRange(): Promise<string[]> {
-    // Generate common network ranges
     const ranges: string[] = []
     
-    // 192.168.1.x range
     for (let i = 200; i <= 210; i++) {
       ranges.push(`192.168.1.${i}`)
     }
     
-    // 192.168.0.x range
     for (let i = 200; i <= 210; i++) {
       ranges.push(`192.168.0.${i}`)
     }

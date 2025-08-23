@@ -91,7 +91,7 @@ export default function EmployeesPage() {
         body: JSON.stringify({
           employeeId,
           action,
-          role: 0 // Normal user
+          role: 0
         }),
       })
 
@@ -99,8 +99,8 @@ export default function EmployeesPage() {
       
       if (result.success) {
         alert(result.message)
-        fetchEmployees() // Refresh the list
-        fetchDeviceUsers() // Refresh device users
+        fetchEmployees()
+        fetchDeviceUsers()
       } else {
         alert(`Failed: ${result.error}`)
       }
@@ -161,7 +161,6 @@ export default function EmployeesPage() {
           </div>
         </div>
 
-        {/* Device Status Alert */}
         {!deviceConnected && (
           <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
             <div className="flex">
@@ -178,7 +177,6 @@ export default function EmployeesPage() {
           </div>
         )}
 
-        {/* Employees Table */}
         <div className="mt-8">
           <div className="overflow-hidden bg-white shadow border border-gray-200 rounded-lg">
             <div className="px-4 py-5 sm:p-6">
@@ -294,7 +292,6 @@ export default function EmployeesPage() {
           </div>
         </div>
 
-        {/* Device Users Summary */}
         {deviceConnected && deviceUsers.length > 0 && (
           <div className="mt-8">
             <h2 className="text-lg font-medium text-gray-900 mb-4">Device Users ({deviceUsers.length})</h2>
@@ -317,7 +314,6 @@ export default function EmployeesPage() {
         )}
       </div>
 
-      {/* Add Employee Form */}
       <AddEmployeeForm
         isOpen={showAddForm}
         onClose={() => setShowAddForm(false)}

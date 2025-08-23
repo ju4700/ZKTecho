@@ -36,7 +36,6 @@ const AttendanceSchema = new Schema<IAttendance>({
   timestamps: { createdAt: true, updatedAt: false }
 })
 
-// Indexes for better query performance
 AttendanceSchema.index({ employeeId: 1, timestamp: -1 })
 AttendanceSchema.index({ deviceUserId: 1, timestamp: -1 })
 AttendanceSchema.index({ timestamp: -1 })

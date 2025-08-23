@@ -26,8 +26,6 @@ export default function Dashboard() {
 
   const fetchDashboardStats = async () => {
     try {
-      // This would be actual API calls in a real implementation
-      // For now, using placeholder data
       setStats({
         totalEmployees: 25,
         activeEmployees: 23,

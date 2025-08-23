@@ -157,7 +157,6 @@ export default function Dashboard() {
           </div>
           <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
             <div className="flex items-center space-x-4">
-              {/* Device Status Indicator */}
               <div className="flex items-center space-x-2">
                 {statusLoading ? (
                   <div className="animate-spin h-4 w-4 border-2 border-gray-300 border-t-blue-600 rounded-full"></div>
@@ -197,7 +196,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Connection Alert */}
         {!deviceStatus.connected && !statusLoading && (
           <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
             <div className="flex">
@@ -226,7 +224,6 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Device Info */}
         {deviceStatus.connected && deviceStatus.info && (
           <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-md">
             <div className="flex">
@@ -245,7 +242,6 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Stats Cards */}
         <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {statCards.map((item) => (
             <div key={item.name} className="overflow-hidden rounded-lg bg-white shadow border border-gray-200">
@@ -270,7 +266,6 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {/* Quick Actions */}
         <div className="mt-8">
           <h2 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -333,7 +328,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Recent Activity */}
         <div className="mt-8">
           <h2 className="text-lg font-medium text-gray-900 mb-4">System Status</h2>
           <div className="bg-white shadow border border-gray-200 rounded-lg">
