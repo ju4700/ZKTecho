@@ -53,17 +53,28 @@ export class ZKTecoService {
   private port: number
   private timeout: number
 
-  constructor(ip: string = process.env.ZKTECO_IP || '192.168.1.201', port: number = parseInt(process.env.ZKTECO_PORT || '4370'), timeout: number = parseInt(process.env.ZKTECO_TIMEOUT || '5000')) {
-    this.ip = ip
-    this.port = port
-    this.timeout = timeout
+  constructor(ip?: string, port?: number, timeout?: number) {
+    this.ip = ip || process.env.ZKTECO_IP || '192.168.1.201'
+    this.port = port || parseInt(process.env.ZKTECO_PORT || '4370')
+    this.timeout = timeout || parseInt(process.env.ZKTECO_TIMEOUT || '5000')
+    
+    console.log(`ZKTeco Service initialized with IP: ${this.ip}, Port: ${this.port}`)
   }
 
   private async ensureZKLib() {
     if (!this.zkLib) {
+      if (!this.ip || this.ip === 'undefined') {
+        throw new Error('ZKTeco IP address not configured. Please set ZKTECO_IP environment variable or provide IP in constructor.')
+      }
+      
       const ZKLibClass = await loadZKLib() as any
       if (ZKLibClass) {
-        this.zkLib = new ZKLibClass(this.ip, this.port, this.timeout, 4000)
+        this.zkLib = new ZKLibClass({
+          ip: this.ip,
+          port: this.port,
+          inport: 5201,
+          timeout: this.timeout
+        })
       } else {
         throw new Error('ZKLib not available - likely running in browser environment')
       }
@@ -73,8 +84,16 @@ export class ZKTecoService {
   async connect(): Promise<boolean> {
     try {
       await this.ensureZKLib()
-      await (this.zkLib as any).createSocket()
-      return true
+      return new Promise((resolve) => {
+        (this.zkLib as any).connect((err: any) => {
+          if (err) {
+            console.error('ZKTeco connection error:', err)
+            resolve(false)
+          } else {
+            resolve(true)
+          }
+        })
+      })
     } catch (error) {
       console.error('ZKTeco connection error:', error)
       return false
@@ -84,7 +103,7 @@ export class ZKTecoService {
   async disconnect(): Promise<void> {
     try {
       if (this.zkLib) {
-        await (this.zkLib as any).disconnect()
+        (this.zkLib as any).disconnect()
       }
     } catch (error) {
       console.error('ZKTeco disconnect error:', error)
@@ -93,10 +112,28 @@ export class ZKTecoService {
 
   async getAttendanceLogs(): Promise<AttendanceLog[]> {
     try {
-      await this.connect()
-      const logs = await (this.zkLib as any).getAttendances()
-      await this.disconnect()
-      return logs || []
+      const connected = await this.connect()
+      if (!connected) {
+        return []
+      }
+      
+      return new Promise((resolve) => {
+        (this.zkLib as any).getAttendance((err: any, logs: any[]) => {
+          this.disconnect()
+          if (err) {
+            console.error('Error fetching attendance logs:', err)
+            resolve([])
+          } else {
+            const formattedLogs = (logs || []).map((log: any) => ({
+              deviceUserId: log.deviceUserId || log.userSn || log.userId,
+              timestamp: new Date(log.timestamp || log.recordTime),
+              attendanceType: log.attendanceType || log.verifyMode || 1,
+              deviceId: log.deviceId || 'default'
+            }))
+            resolve(formattedLogs)
+          }
+        })
+      })
     } catch (error) {
       console.error('Error fetching attendance logs:', error)
       return []
@@ -105,10 +142,28 @@ export class ZKTecoService {
 
   async getUsers(): Promise<DeviceUser[]> {
     try {
-      await this.connect()
-      const users = await (this.zkLib as any).getUsers()
-      await this.disconnect()
-      return users || []
+      const connected = await this.connect()
+      if (!connected) {
+        return []
+      }
+      
+      return new Promise((resolve) => {
+        (this.zkLib as any).getUser((err: any, users: any[]) => {
+          this.disconnect()
+          if (err) {
+            console.error('Error fetching users:', err)
+            resolve([])
+          } else {
+            const formattedUsers = (users || []).map((user: any) => ({
+              userId: user.userId || user.userSn,
+              name: user.name || '',
+              role: user.role || 0,
+              cardno: user.cardno || ''
+            }))
+            resolve(formattedUsers)
+          }
+        })
+      })
     } catch (error) {
       console.error('Error fetching users:', error)
       return []
@@ -116,94 +171,99 @@ export class ZKTecoService {
   }
 
   async getRealTimeLogs(): Promise<AttendanceLog[]> {
-    try {
-      await this.connect()
-      const logs = await (this.zkLib as any).getRealTimeLogs()
-      await this.disconnect()
-      return logs || []
-    } catch (error) {
-      console.error('Error fetching real-time logs:', error)
-      return []
-    }
+    console.log('Real-time logs not supported with current zklib version')
+    return []
   }
 
   async getDeviceInfo(): Promise<DeviceInfo | null> {
     try {
-      await this.connect()
-      const info = await (this.zkLib as any).getInfo()
-      await this.disconnect()
-      return info
+      const connected = await this.connect()
+      if (!connected) {
+        return null
+      }
+      
+      return new Promise((resolve) => {
+        (this.zkLib as any).serialNumber((err: any, serialNumber: string) => {
+          if (err) {
+            this.disconnect()
+            resolve(null)
+          } else {
+            (this.zkLib as any).version((versionErr: any, version: string) => {
+              this.disconnect()
+              if (versionErr) {
+                resolve({
+                  userCounts: 0,
+                  logCounts: 0,
+                  logCapacity: 0,
+                  userCapacity: 0,
+                  deviceName: 'ZKTeco Device',
+                  algorithmVer: '',
+                  flashSize: '',
+                  freeFlashSize: '',
+                  language: '',
+                  workCode: '',
+                  deviceId: serialNumber || 'unknown',
+                  lockFunOn: '',
+                  voiceFunOn: '',
+                  faceVersion: '',
+                  fpVersion: '',
+                  pushVer: '',
+                  platform: version || 'unknown'
+                })
+              } else {
+                resolve({
+                  userCounts: 0,
+                  logCounts: 0,
+                  logCapacity: 0,
+                  userCapacity: 0,
+                  deviceName: 'ZKTeco Device',
+                  algorithmVer: '',
+                  flashSize: '',
+                  freeFlashSize: '',
+                  language: '',
+                  workCode: '',
+                  deviceId: serialNumber || 'unknown',
+                  lockFunOn: '',
+                  voiceFunOn: '',
+                  faceVersion: '',
+                  fpVersion: '',
+                  pushVer: '',
+                  platform: version || 'unknown'
+                })
+              }
+            })
+          }
+        })
+      })
     } catch (error) {
       console.error('Error fetching device info:', error)
       return null
     }
   }
 
-  async addUser(userId: string, name: string, password?: string, role: number = 0, cardno?: string): Promise<boolean> {
-    try {
-      await this.connect()
-      const userObj = {
-        userId: userId,
-        name: name,
-        password: password || '',
-        role: role,
-        cardno: cardno || ''
-      }
-      const result = await (this.zkLib as any).setUser(userId, userObj)
-      await this.disconnect()
-      return result
-    } catch (error) {
-      console.error('Error adding user to device:', error)
-      return false
-    }
+  async addUser(userId: string, name: string): Promise<boolean> {
+    console.log(`User management not supported with current zklib version. Attempted to add user: ${userId} - ${name}`)
+    return false
   }
 
   async deleteUser(userId: string): Promise<boolean> {
-    try {
-      await this.connect()
-      const result = await (this.zkLib as any).deleteUser(userId)
-      await this.disconnect()
-      return result
-    } catch (error) {
-      console.error('Error deleting user from device:', error)
-      return false
-    }
+    console.log(`User management not supported with current zklib version. Attempted to delete user: ${userId}`)
+    return false
   }
 
-  async enrollFingerprint(userId: string, fingerprintTemplate: string): Promise<boolean> {
-    try {
-      await this.connect()
-      const result = await (this.zkLib as any).setUserFingerPrint(userId, fingerprintTemplate)
-      await this.disconnect()
-      return result
-    } catch (error) {
-      console.error('Error enrolling fingerprint:', error)
-      return false
-    }
+  async enrollFingerprint(userId: string): Promise<boolean> {
+    console.log(`Fingerprint enrollment not supported with current zklib version. Attempted for user: ${userId}`)
+    return false
   }
 
   async clearAllUsers(): Promise<boolean> {
-    try {
-      await this.connect()
-      const result = await (this.zkLib as any).clearAdminPrivilege()
-      await this.disconnect()
-      return result
-    } catch (error) {
-      console.error('Error clearing users:', error)
-      return false
-    }
+    console.log('Clear all users not supported with current zklib version')
+    return false
   }
 
   async saveDataToDevice(): Promise<boolean> {
-    try {
-      await this.connect()
-      const result = await (this.zkLib as any).saveDataToDevice()
-      await this.disconnect()
-      return result
-    } catch (error) {
-      console.error('Error saving data to device:', error)
-      return false
-    }
+    console.log('Save data to device not supported with current zklib version')
+    return false
   }
 }
 
