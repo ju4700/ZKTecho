@@ -60,6 +60,9 @@ export default function EmployeesPage() {
   const [deviceConnected, setDeviceConnected] = useState(false);
   const [showDeviceUsers, setShowDeviceUsers] = useState(false);
 
+  // Ensure employees is always an array
+  const safeEmployees = Array.isArray(employees) ? employees : [];
+
   useEffect(() => {
     fetchEmployees();
     checkDeviceConnection();
@@ -70,10 +73,26 @@ export default function EmployeesPage() {
     try {
       setLoading(true);
       const response = await fetch('/api/employees');
-      const data = await response.json();
-      setEmployees(data);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const result = await response.json();
+      console.log('API Response:', result); // Debug log
+      
+      // Handle different response formats
+      if (result && result.data && Array.isArray(result.data)) {
+        setEmployees(result.data);
+      } else if (Array.isArray(result)) {
+        setEmployees(result);
+      } else {
+        console.warn('Invalid employees data format:', result);
+        setEmployees([]);
+      }
     } catch (error) {
       console.error('Error fetching employees:', error);
+      setEmployees([]); // Ensure employees is always an array
     } finally {
       setLoading(false);
     }
@@ -93,9 +112,9 @@ export default function EmployeesPage() {
 
   const checkDeviceConnection = async () => {
     try {
-      const response = await fetch('/api/device/status');
+      const response = await fetch('/api/device/quick-status');
       const status = await response.json();
-      setDeviceConnected(status.connected);
+      setDeviceConnected(status.isConnected);
     } catch (error) {
       console.error('Error checking device status:', error);
       setDeviceConnected(false);
@@ -161,7 +180,7 @@ export default function EmployeesPage() {
     setSelectedEmployee(null);
   };
 
-  const filteredEmployees = employees.filter(employee => {
+  const filteredEmployees = safeEmployees.filter(employee => {
     const matchesSearch = employee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          employee.employeeId.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          (employee.phone && employee.phone.includes(searchTerm));
@@ -249,7 +268,7 @@ export default function EmployeesPage() {
             </div>
             <div className="ml-3">
               <p className="text-sm font-medium text-gray-600">Total Employees</p>
-              <p className="text-2xl font-semibold text-gray-900">{employees.length}</p>
+              <p className="text-2xl font-semibold text-gray-900">{safeEmployees.length}</p>
             </div>
           </div>
         </div>
@@ -262,7 +281,7 @@ export default function EmployeesPage() {
             <div className="ml-3">
               <p className="text-sm font-medium text-gray-600">Enrolled</p>
               <p className="text-2xl font-semibold text-gray-900">
-                {employees.filter(e => e.fingerprintEnrolled).length}
+                {safeEmployees.filter(e => e.fingerprintEnrolled).length}
               </p>
             </div>
           </div>
@@ -276,7 +295,7 @@ export default function EmployeesPage() {
             <div className="ml-3">
               <p className="text-sm font-medium text-gray-600">Pending</p>
               <p className="text-2xl font-semibold text-gray-900">
-                {employees.filter(e => !e.fingerprintEnrolled).length}
+                {safeEmployees.filter(e => !e.fingerprintEnrolled).length}
               </p>
             </div>
           </div>

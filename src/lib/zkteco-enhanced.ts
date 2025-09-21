@@ -203,14 +203,20 @@ export class EnhancedZKTecoService {
    */
   private async verifyConnection(): Promise<void> {
     try {
+      if (!this.zkLib) {
+        throw new Error('No ZKLib instance available')
+      }
+
       const verifyPromise = this.zkLib.getInfo()
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Verification timeout')), 5000) // Increased timeout
+        setTimeout(() => reject(new Error('Verification timeout')), 3000) // Shorter timeout
       )
       
       const info = await Promise.race([verifyPromise, timeoutPromise])
       console.log('✅ Connection verified with device info:', info)
     } catch (error) {
+      // Clean up on verification failure
+      this.performCleanup()
       throw new Error(`Connection verification failed: ${error}`)
     }
   }
@@ -224,14 +230,11 @@ export class EnhancedZKTecoService {
       if (this.zkLib && this.connectionStatus.isConnected) {
         // Try to send CMD_EXIT first (protocol compliance)
         try {
-          // Remove any listeners safely before disconnecting
-          if (this.zkLib && typeof this.zkLib.removeAllListeners === 'function') {
-            this.zkLib.removeAllListeners()
-          }
-          
+          // Create a timeout promise for safe disconnection
+          const disconnectPromise = this.zkLib ? this.zkLib.disconnect() : Promise.resolve()
           await Promise.race([
-            this.zkLib.disconnect(),
-            new Promise(resolve => setTimeout(resolve, 2000))
+            disconnectPromise,
+            new Promise(resolve => setTimeout(resolve, 1500)) // Shorter timeout
           ])
         } catch (disconnectError) {
           console.warn('Graceful disconnect failed, forcing cleanup:', disconnectError)
@@ -242,20 +245,8 @@ export class EnhancedZKTecoService {
     } catch (error) {
       console.error('ZKTeco disconnect error:', error)
     } finally {
-      // Ensure cleanup
-      if (this.zkLib) {
-        try {
-          if (typeof this.zkLib.removeAllListeners === 'function') {
-            this.zkLib.removeAllListeners()
-          }
-        } catch {
-          // Ignore cleanup errors
-        }
-      }
-      
-      this.zkLib = null
-      this.connectionStatus = { isConnected: false }
-      this.sessionId = ''
+      // Ensure cleanup happens regardless
+      this.performCleanup()
     }
   }
 
@@ -266,31 +257,41 @@ export class EnhancedZKTecoService {
     try {
       if (this.zkLib) {
         try {
-          // Remove listeners before disconnecting
-          if (typeof this.zkLib.removeAllListeners === 'function') {
-            this.zkLib.removeAllListeners()
-          }
-          
           // Set a very short timeout for emergency disconnect
+          const disconnectPromise = this.zkLib.disconnect()
           await Promise.race([
-            this.zkLib.disconnect(),
-            new Promise(resolve => setTimeout(resolve, 500))
+            disconnectPromise,
+            new Promise(resolve => setTimeout(resolve, 300)) // Very short timeout
           ])
         } catch {
           // Ignore disconnect errors during cleanup
         }
-        
-        // Force null the connection object to prevent reuse
-        this.zkLib = null
       }
-    } catch {
-      // Ignore all errors during force disconnect
+    } catch (error) {
+      console.error('Force disconnect error:', error)
     } finally {
-      this.zkLib = null
-      this.connectionStatus = { isConnected: false }
-      this.sessionId = ''
-      this.isConnecting = false
+      this.performCleanup()
     }
+  }
+
+  /**
+   * Safe cleanup of all resources
+   */
+  private performCleanup(): void {
+    try {
+      // Remove listeners only if zkLib exists and has the method
+      if (this.zkLib && typeof this.zkLib.removeAllListeners === 'function') {
+        this.zkLib.removeAllListeners()
+      }
+    } catch (cleanupError) {
+      // Ignore cleanup errors but log them
+      console.warn('Listener cleanup warning:', cleanupError)
+    }
+
+    // Nullify reference and reset state
+    this.zkLib = null
+    this.connectionStatus = { isConnected: false }
+    this.sessionId = ''
   }
 
   /**
@@ -323,17 +324,24 @@ export class EnhancedZKTecoService {
         
         console.log('🔍 Fetching users from ZKTeco device...')
         
-        // Get users with timeout protection
-        const usersPromise = this.zkLib.getUsers()
+        // Get users with timeout protection and better error handling
+        const usersPromise = this.zkLib ? this.zkLib.getUsers() : Promise.reject(new Error('No connection'))
         const timeoutPromise = new Promise<never>((_, reject) => 
-          setTimeout(() => reject(new Error('Get users timeout')), 6000) // Reduced timeout
+          setTimeout(() => reject(new Error('Get users timeout')), 4000) // Shorter timeout
         )
         
         const users = await Promise.race([usersPromise, timeoutPromise])
         console.log('📥 Raw user data from device:', users)
         
-        // Ensure clean disconnect
-        await this.disconnect()
+        // Ensure clean disconnect - use safer disconnect method
+        try {
+          await this.disconnect()
+        } catch (disconnectError) {
+          console.warn('Disconnect warning during getUsers:', disconnectError)
+          // Force cleanup if normal disconnect fails
+          this.performCleanup()
+        }
+        
         this.lastOperationTime = Date.now()
         
         // Handle different data formats from the device
@@ -364,12 +372,21 @@ export class EnhancedZKTecoService {
         
       } catch (error) {
         console.error(`❌ Error getting users (attempt ${retryCount + 1}):`, error)
-        await this.forceDisconnect()
+        
+        // Always perform cleanup on error
+        try {
+          await this.forceDisconnect()
+        } catch (cleanupError) {
+          console.warn('Cleanup error during getUsers failure:', cleanupError)
+          // Force cleanup even if disconnect fails
+          this.performCleanup()
+        }
         
         retryCount++
         if (retryCount < this.maxRetries) {
-          console.log(`⏳ Retrying getUsers in ${this.retryDelay * retryCount}ms...`)
-          await new Promise(resolve => setTimeout(resolve, this.retryDelay * retryCount))
+          const delayMs = Math.min(this.retryDelay * retryCount, 10000) // Cap delay at 10s
+          console.log(`⏳ Retrying getUsers in ${delayMs}ms...`)
+          await new Promise(resolve => setTimeout(resolve, delayMs))
         }
       }
     }

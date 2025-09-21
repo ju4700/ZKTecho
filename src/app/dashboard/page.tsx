@@ -55,6 +55,9 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
 
+  // Ensure employees is always an array
+  const safeEmployees = Array.isArray(employees) ? employees : [];
+
   // Keep device always connected - simple ping check
   useEffect(() => {
     const keepConnected = async () => {
@@ -88,11 +91,22 @@ export default function Dashboard() {
     try {
       const response = await fetch('/api/employees');
       if (response.ok) {
-        const data = await response.json();
-        setEmployees(data);
+        const result = await response.json();
+        console.log('Dashboard API Response:', result); // Debug log
+        
+        // Handle different response formats
+        if (result && result.data && Array.isArray(result.data)) {
+          setEmployees(result.data);
+        } else if (Array.isArray(result)) {
+          setEmployees(result);
+        } else {
+          console.warn('Invalid employees data format in dashboard:', result);
+          setEmployees([]);
+        }
       }
     } catch (error) {
       console.error('Error fetching employees:', error);
+      setEmployees([]); // Ensure employees is always an array
     }
   }, []);
 
@@ -334,7 +348,7 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {employees.map((employee) => (
+                {safeEmployees.map((employee) => (
                   <tr key={employee._id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div>
