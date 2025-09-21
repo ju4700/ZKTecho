@@ -88,7 +88,7 @@ export default function Dashboard() {
       const employeesData = await employeesResponse.json();
       
       // Fetch device status
-      const deviceResponse = await fetch('/api/device/status');
+      const deviceResponse = await fetch('/api/device/quick-status');
       const deviceData = await deviceResponse.json();
       
       // Fetch attendance
@@ -104,7 +104,7 @@ export default function Dashboard() {
         activeEmployees: employeesData.data?.employees?.filter((emp: Employee) => emp.status === 'active')?.length || 0,
         todayAttendance: attendanceData.data?.length || 0,
         pendingSalaries: 0, // Will be calculated from salary API
-        deviceStatus: deviceData.connected ? 'connected' : 'disconnected'
+        deviceStatus: deviceData.isConnected ? 'connected' : 'disconnected'
       });
       
     } catch (error) {
