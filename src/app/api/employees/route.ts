@@ -42,12 +42,20 @@ export async function POST(request: NextRequest) {
       employeeId,
       name,
       phone: phone || undefined,
-      monthlySalary: parseFloat(monthlySalary)
+      monthlySalary: parseFloat(monthlySalary),
+      fingerprintEnrolled: false,
+      deviceUserId: null // Will be assigned later through fingerprint assignment
     })
     
     await employee.save()
     
-    return NextResponse.json(employee, { status: 201 })
+    console.log(`✅ Employee ${name} created successfully (ID: ${employeeId})`)
+    
+    return NextResponse.json({
+      ...employee.toObject(),
+      message: 'Employee created successfully. You can now assign a fingerprint from the ZKTeco device.',
+      nextStep: 'Navigate to fingerprint assignment to link this employee with an enrolled fingerprint.'
+    }, { status: 201 })
   } catch (error) {
     console.error('Error creating employee:', error)
     return NextResponse.json(

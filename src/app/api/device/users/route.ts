@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { zktecoService } from '@/lib/zkteco'
+import { getEnhancedZKTecoService } from '@/lib/zkteco-enhanced'
 import connectDB from '@/lib/mongodb'
 import Employee from '@/models/Employee'
 
@@ -8,17 +8,55 @@ interface UserData {
   role?: number
 }
 
+// GET - Fetch all users from device
+export async function GET() {
+  try {
+    console.log('🔍 Fetching users directly from ZKTeco device...')
+    
+    const zkService = getEnhancedZKTecoService()
+    const users = await zkService.getUsers()
+    
+    // Also get device info for context
+    const deviceInfo = await zkService.getDeviceInfo()
+    
+    return NextResponse.json({
+      success: true,
+      total: users.length,
+      users: users.map(user => ({
+        id: user.userId,
+        name: user.name,
+        role: user.role,
+        cardno: user.cardno,
+        userSn: user.userSn,
+        enabled: user.enabled,
+        group: user.group,
+        verificationMode: user.verificationMode,
+        source: 'device'
+      })),
+      deviceInfo,
+      message: `Found ${users.length} users on device`
+    })
+    
+  } catch (error) {
+    console.error('Error fetching device users:', error)
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch users from device'
+    }, { status: 500 })
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     await connectDB()
     const body = await request.json()
-    const { employeeId, action, ...userData } = body
+    const { employeeId, action, userId, name, ...userData } = body
 
     switch (action) {
-      case 'add':
-        return await addUserToDevice(employeeId, userData as UserData)
+      case 'create':
+        return await createUserOnDevice(userId, name)
       case 'delete':
-        return await deleteUserFromDevice(employeeId)
+        return await deleteUserFromDevice(userId)
       case 'sync':
         return await syncUserToDevice(employeeId)
       case 'enroll_fingerprint':
@@ -35,128 +73,111 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function addUserToDevice(employeeId: string, _userData: UserData) {
+async function createUserOnDevice(userId: string, name: string) {
   try {
-    const employee = await Employee.findById(employeeId)
-    if (!employee) {
-      return NextResponse.json({ error: 'Employee not found' }, { status: 404 })
+    if (!userId || !name) {
+      return NextResponse.json({
+        success: false,
+        error: 'userId and name are required'
+      }, { status: 400 })
     }
-
-    const deviceUserId = employee.deviceUserId || employee.employeeId
-
-    // Note: Advanced user management features are not available with current zklib setup
-    // This would require a physical ZKTeco device connection
-    const success = await zktecoService.addUser(deviceUserId, employee.name)
-
+    
+    console.log(`👤 Creating user ${userId} (${name}) on ZKTeco device...`)
+    
+    const zkService = getEnhancedZKTecoService()
+    const success = await zkService.addUser(userId, name)
+    
     if (success) {
-      // This won't execute with current setup since zktecoService.addUser returns false
-      employee.deviceUserId = deviceUserId
-      employee.lastSyncedAt = new Date()
-      await employee.save()
-
-      return NextResponse.json({ 
-        success: true, 
-        message: 'User added to device successfully. Employee can now register fingerprint on the device.',
-        deviceUserId: deviceUserId
+      return NextResponse.json({
+        success: true,
+        message: `Successfully created user ${userId} on device`,
+        user: { userId, name }
       })
     } else {
-      // For now, just update the employee record to simulate device sync
-      employee.deviceUserId = deviceUserId
-      employee.lastSyncedAt = new Date()
-      await employee.save()
-
-      return NextResponse.json({ 
-        success: true, 
-        message: 'Employee record updated. Physical device connection required for actual user creation.',
-        deviceUserId: deviceUserId
-      })
+      return NextResponse.json({
+        success: false,
+        error: `Failed to create user ${userId} on device`
+      }, { status: 500 })
     }
+    
   } catch (error) {
-    console.error('Error adding user to device:', error)
-    return NextResponse.json({ 
-      error: 'Failed to add user to device' 
+    console.error('Error creating device user:', error)
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to create user on device'
     }, { status: 500 })
   }
 }
 
-async function deleteUserFromDevice(employeeId: string) {
+async function deleteUserFromDevice(userId: string) {
   try {
-    const employee = await Employee.findById(employeeId)
-    if (!employee) {
-      return NextResponse.json({ error: 'Employee not found' }, { status: 404 })
+    if (!userId) {
+      return NextResponse.json({
+        success: false,
+        error: 'userId is required'
+      }, { status: 400 })
     }
-
-    const deviceUserId = employee.deviceUserId || employee.employeeId
-    const success = await zktecoService.deleteUser(deviceUserId)
-
+    
+    console.log(`🗑️ Deleting user ${userId} from ZKTeco device...`)
+    
+    const zkService = getEnhancedZKTecoService()
+    const success = await zkService.deleteUser(userId)
+    
     if (success) {
-      // This won't execute with current setup
-      employee.deviceUserId = undefined
-      employee.fingerprintEnrolled = false
-      employee.fingerprintDate = undefined
-      employee.lastSyncedAt = new Date()
-      await employee.save()
-
-      return NextResponse.json({ 
-        success: true, 
-        message: 'User deleted from device successfully' 
+      return NextResponse.json({
+        success: true,
+        message: `Successfully deleted user ${userId} from device`
       })
     } else {
-      // For now, just update the employee record to simulate device sync
-      employee.deviceUserId = undefined
-      employee.fingerprintEnrolled = false
-      employee.fingerprintDate = undefined
-      employee.lastSyncedAt = new Date()
-      await employee.save()
-
-      return NextResponse.json({ 
-        success: true, 
-        message: 'Employee record updated. Physical device connection required for actual user deletion.' 
-      })
+      return NextResponse.json({
+        success: false,
+        error: `Failed to delete user ${userId} from device`
+      }, { status: 500 })
     }
+    
   } catch (error) {
-    console.error('Error deleting user from device:', error)
-    return NextResponse.json({ 
-      error: 'Failed to delete user from device' 
+    console.error('Error deleting device user:', error)
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to delete user from device'
     }, { status: 500 })
   }
 }
 
 async function syncUserToDevice(employeeId: string) {
   try {
-    const employee = await Employee.findById(employeeId)
+    const employee = await Employee.findOne({ employeeId })
     if (!employee) {
       return NextResponse.json({ error: 'Employee not found' }, { status: 404 })
     }
 
-    const deviceUserId = employee.deviceUserId || employee.employeeId
+    if (!employee.deviceUserId) {
+      return NextResponse.json({ 
+        error: 'Employee does not have a device user ID assigned' 
+      }, { status: 400 })
+    }
 
-    await zktecoService.deleteUser(deviceUserId)
-    const success = await zktecoService.addUser(deviceUserId, employee.name)
-
+    console.log(`🔄 Syncing employee ${employeeId} to device as user ${employee.deviceUserId}...`)
+    
+    const zkService = getEnhancedZKTecoService()
+    const success = await zkService.addUser(employee.deviceUserId, employee.name)
+    
     if (success) {
-      await zktecoService.saveDataToDevice()
-      
-      employee.deviceUserId = deviceUserId
       employee.lastSyncedAt = new Date()
       await employee.save()
-
-      return NextResponse.json({ 
-        success: true, 
-        message: 'User synced to device successfully' 
+      
+      return NextResponse.json({
+        success: true,
+        message: `Successfully synced ${employee.name} to device`,
+        deviceUserId: employee.deviceUserId
       })
     } else {
-      // For now, just update the employee record to simulate device sync
-      employee.deviceUserId = deviceUserId
-      employee.lastSyncedAt = new Date()
-      await employee.save()
-
-      return NextResponse.json({ 
-        success: true, 
-        message: 'Employee record updated. Physical device connection required for actual user sync.' 
-      })
+      return NextResponse.json({
+        success: false,
+        error: 'Failed to sync user to device'
+      }, { status: 500 })
     }
+    
   } catch (error) {
     console.error('Error syncing user to device:', error)
     return NextResponse.json({ 
@@ -167,42 +188,43 @@ async function syncUserToDevice(employeeId: string) {
 
 async function enrollFingerprint(employeeId: string) {
   try {
-    const employee = await Employee.findById(employeeId)
+    const employee = await Employee.findOne({ employeeId })
     if (!employee) {
       return NextResponse.json({ error: 'Employee not found' }, { status: 404 })
     }
 
     if (!employee.deviceUserId) {
       return NextResponse.json({ 
-        error: 'Employee must be added to device first' 
+        error: 'Employee must have a device user ID assigned before fingerprint enrollment' 
       }, { status: 400 })
     }
 
-    employee.fingerprintEnrolled = true
-    employee.fingerprintDate = new Date()
-    await employee.save()
-
-    return NextResponse.json({ 
-      success: true, 
-      message: 'Fingerprint enrollment recorded. Salary calculation will start from today.' 
-    })
+    console.log(`👆 Initiating fingerprint enrollment for ${employee.name} (device ID: ${employee.deviceUserId})...`)
+    
+    const zkService = getEnhancedZKTecoService()
+    const success = await zkService.startFingerprintEnrollment(employee.deviceUserId, 0)
+    
+    if (success) {
+      employee.fingerprintEnrolled = true
+      employee.fingerprintDate = new Date()
+      await employee.save()
+      
+      return NextResponse.json({
+        success: true,
+        message: `Fingerprint enrollment initiated for ${employee.name}. Please complete on device.`,
+        deviceUserId: employee.deviceUserId
+      })
+    } else {
+      return NextResponse.json({
+        success: false,
+        error: 'Failed to initiate fingerprint enrollment'
+      }, { status: 500 })
+    }
+    
   } catch (error) {
-    console.error('Error recording fingerprint enrollment:', error)
+    console.error('Error enrolling fingerprint:', error)
     return NextResponse.json({ 
-      error: 'Failed to record fingerprint enrollment' 
+      error: 'Failed to enroll fingerprint' 
     }, { status: 500 })
-  }
-}
-
-export async function GET() {
-  try {
-    const deviceUsers = await zktecoService.getUsers()
-    return NextResponse.json({ users: deviceUsers })
-  } catch (error) {
-    console.error('Error fetching device users:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch device users' },
-      { status: 500 }
-    )
   }
 }

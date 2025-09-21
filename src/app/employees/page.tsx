@@ -1,8 +1,10 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { Plus, Wifi, WifiOff, AlertTriangle, CheckCircle } from 'lucide-react'
+import { Plus, Fingerprint, CheckCircle, AlertTriangle, User, Wifi, WifiOff } from 'lucide-react'
 import AddEmployeeForm from '@/components/AddEmployeeForm'
+import FingerprintAssignment from '@/components/FingerprintAssignment'
+import FingerprintEnrollment from '@/components/FingerprintEnrollment'
 
 interface Employee {
   _id: string
@@ -32,7 +34,12 @@ export default function EmployeesPage() {
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState<string | null>(null)
   const [showAddForm, setShowAddForm] = useState(false)
+  const [showFingerprintAssignment, setShowFingerprintAssignment] = useState(false)
+  const [showFingerprintEnrollment, setShowFingerprintEnrollment] = useState(false)
+  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null)
   const [deviceConnected, setDeviceConnected] = useState(false)
+
+  console.log('Sync state:', syncing); // Keep track of syncing state
 
   useEffect(() => {
     fetchEmployees()
@@ -116,6 +123,28 @@ export default function EmployeesPage() {
     return deviceUsers.some(du => du.userId === deviceUserId)
   }
 
+  const openFingerprintAssignment = (employee: Employee) => {
+    setSelectedEmployee(employee)
+    setShowFingerprintAssignment(true)
+  }
+
+  const openFingerprintEnrollment = (employee: Employee) => {
+    setSelectedEmployee(employee)
+    setShowFingerprintEnrollment(true)
+  }
+
+  const handleFingerprintAssignmentSuccess = () => {
+    fetchEmployees() // Refresh employee list
+    setShowFingerprintAssignment(false)
+    setSelectedEmployee(null)
+  }
+
+  const handleFingerprintEnrollmentComplete = () => {
+    fetchEmployees() // Refresh employee list
+    setShowFingerprintEnrollment(false)
+    setSelectedEmployee(null)
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
@@ -197,7 +226,7 @@ export default function EmployeesPage() {
                         Monthly Salary
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Device Status
+                        Fingerprint Status
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Actions
@@ -235,45 +264,60 @@ export default function EmployeesPage() {
                           ${employee.monthlySalary}/month
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          {isUserOnDevice(employee) ? (
+                          {employee.fingerprintEnrolled && employee.deviceUserId ? (
                             <div className="flex items-center text-green-600">
                               <CheckCircle className="h-4 w-4 mr-1" />
-                              <span className="text-xs">On Device</span>
+                              <span className="text-xs">Enrolled (ID: {employee.deviceUserId})</span>
                             </div>
                           ) : (
                             <div className="flex items-center text-gray-400">
                               <AlertTriangle className="h-4 w-4 mr-1" />
-                              <span className="text-xs">Not Synced</span>
+                              <span className="text-xs">Not Assigned</span>
                             </div>
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                           <div className="flex space-x-2">
-                            {!isUserOnDevice(employee) ? (
-                              <button
-                                onClick={() => syncUserToDevice(employee._id, 'add')}
-                                disabled={syncing === employee._id || !deviceConnected}
-                                className="text-blue-600 hover:text-blue-900 disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
-                                {syncing === employee._id ? 'Adding...' : 'Add to Device'}
-                              </button>
+                            {!employee.fingerprintEnrolled ? (
+                              <div className="flex space-x-1">
+                                <button
+                                  onClick={() => openFingerprintAssignment(employee)}
+                                  className="inline-flex items-center px-2 py-1 text-xs font-medium text-green-600 hover:text-green-800 border border-green-200 rounded hover:bg-green-50"
+                                >
+                                  <Fingerprint className="h-3 w-3 mr-1" />
+                                  Assign ID
+                                </button>
+                                <button
+                                  onClick={() => openFingerprintEnrollment(employee)}
+                                  className="inline-flex items-center px-2 py-1 text-xs font-medium text-blue-600 hover:text-blue-800 border border-blue-200 rounded hover:bg-blue-50"
+                                >
+                                  <User className="h-3 w-3 mr-1" />
+                                  Enroll Print
+                                </button>
+                              </div>
                             ) : (
-                              <>
+                              <div className="flex space-x-1">
                                 <button
-                                  onClick={() => syncUserToDevice(employee._id, 'sync')}
-                                  disabled={syncing === employee._id || !deviceConnected}
-                                  className="text-green-600 hover:text-green-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  onClick={() => openFingerprintAssignment(employee)}
+                                  className="inline-flex items-center px-2 py-1 text-xs font-medium text-blue-600 hover:text-blue-800 border border-blue-200 rounded hover:bg-blue-50"
                                 >
-                                  {syncing === employee._id ? 'Syncing...' : 'Update'}
+                                  <User className="h-3 w-3 mr-1" />
+                                  ID: {employee.deviceUserId}
                                 </button>
                                 <button
-                                  onClick={() => syncUserToDevice(employee._id, 'delete')}
-                                  disabled={syncing === employee._id}
-                                  className="text-red-600 hover:text-red-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  onClick={() => openFingerprintEnrollment(employee)}
+                                  className="inline-flex items-center px-2 py-1 text-xs font-medium text-green-600 hover:text-green-800 border border-green-200 rounded hover:bg-green-50"
                                 >
-                                  {syncing === employee._id ? 'Removing...' : 'Remove'}
+                                  <Fingerprint className="h-3 w-3 mr-1" />
+                                  Re-enroll
                                 </button>
-                              </>
+                                <button
+                                  onClick={() => openFingerprintAssignment(employee)}
+                                  className="text-xs text-gray-600 hover:text-gray-800"
+                                >
+                                  Change ID
+                                </button>
+                              </div>
                             )}
                           </div>
                         </td>
@@ -317,8 +361,55 @@ export default function EmployeesPage() {
       <AddEmployeeForm
         isOpen={showAddForm}
         onClose={() => setShowAddForm(false)}
-        onSuccess={fetchEmployees}
+        onSuccess={() => {
+          fetchEmployees()
+          setShowAddForm(false)
+        }}
       />
+
+      {selectedEmployee && (
+        <FingerprintAssignment
+          employee={selectedEmployee}
+          isOpen={showFingerprintAssignment}
+          onClose={() => {
+            setShowFingerprintAssignment(false)
+            setSelectedEmployee(null)
+          }}
+          onSuccess={handleFingerprintAssignmentSuccess}
+        />
+      )}
+
+      {selectedEmployee && showFingerprintEnrollment && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full">
+            <div className="p-4 border-b border-gray-200">
+              <div className="flex justify-between items-center">
+                <h3 className="text-lg font-medium text-gray-900">
+                  Fingerprint Enrollment
+                </h3>
+                <button
+                  onClick={() => {
+                    setShowFingerprintEnrollment(false)
+                    setSelectedEmployee(null)
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="p-4">
+              <FingerprintEnrollment
+                employeeId={selectedEmployee.employeeId}
+                employeeName={selectedEmployee.name}
+                onEnrollmentComplete={handleFingerprintEnrollmentComplete}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
