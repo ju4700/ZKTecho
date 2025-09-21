@@ -1,357 +1,321 @@
-'use client'
+'use client';
 
-import React, { useState, useEffect } from 'react'
-import { Users, Clock, DollarSign, Wifi, WifiOff, AlertCircle } from 'lucide-react'
-import Link from 'next/link'
+import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { 
+  UsersIcon, 
+  ClockIcon, 
+  CreditCardIcon, 
+  TrendingUpIcon,
+  AlertCircleIcon,
+  CheckCircleIcon,
+  MonitorIcon,
+  RefreshCwIcon,
+  ChevronRightIcon,
+  BarChart3Icon,
+  CalendarIcon,
+  DollarSignIcon
+} from 'lucide-react';
 
-interface Stats {
-  totalEmployees: number
-  activeEmployees: number
-  totalAttendanceToday: number
-  pendingSalaries: number
+interface DashboardStats {
+  totalEmployees: number;
+  activeEmployees: number;
+  todayAttendance: number;
+  pendingSalaries: number;
+  deviceStatus: 'connected' | 'disconnected' | 'unknown';
 }
 
-interface DeviceStatus {
-  connected: boolean
-  error?: string
-  info?: {
-    model?: string
-    serialNumber?: string
-    userCount?: number
+interface QuickAction {
+  title: string;
+  description: string;
+  href: string;
+  icon: React.ElementType;
+  color: string;
+}
+
+const quickActions: QuickAction[] = [
+  {
+    title: 'Add Employee',
+    description: 'Register new employee',
+    href: '/employees',
+    icon: UsersIcon,
+    color: 'bg-blue-500'
+  },
+  {
+    title: 'View Attendance',
+    description: 'Check attendance records',
+    href: '/test-attendance',
+    icon: ClockIcon,
+    color: 'bg-green-500'
+  },
+  {
+    title: 'Manage Device',
+    description: 'Configure ZKTeco device',
+    href: '/device-management',
+    icon: MonitorIcon,
+    color: 'bg-purple-500'
+  },
+  {
+    title: 'Generate Reports',
+    description: 'Create salary reports',
+    href: '/dashboard',
+    icon: BarChart3Icon,
+    color: 'bg-orange-500'
   }
-}
+];
 
 export default function Dashboard() {
-  const [stats, setStats] = useState<Stats>({
+  const [stats, setStats] = useState<DashboardStats>({
     totalEmployees: 0,
     activeEmployees: 0,
-    totalAttendanceToday: 0,
-    pendingSalaries: 0
-  })
-  const [loading, setLoading] = useState(true)
-  const [syncing, setSyncing] = useState(false)
-  const [deviceStatus, setDeviceStatus] = useState<DeviceStatus>({ connected: false })
-  const [statusLoading, setStatusLoading] = useState(true)
+    todayAttendance: 0,
+    pendingSalaries: 0,
+    deviceStatus: 'unknown'
+  });
+
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchStats()
-    checkDeviceStatus()
-  }, [])
+    loadDashboardData();
+  }, []);
 
-  const fetchStats = async () => {
+  const loadDashboardData = async () => {
     try {
-      const [employeesRes, attendanceRes, salariesRes] = await Promise.all([
-        fetch('/api/employees'),
-        fetch('/api/attendance'),
-        fetch('/api/salaries')
-      ])
+      setLoading(true);
+      
+      // Fetch employees
+      const employeesResponse = await fetch('/api/employees');
+      const employeesData = await employeesResponse.json();
+      
+      // Fetch device status
+      const deviceResponse = await fetch('/api/device/status');
+      const deviceData = await deviceResponse.json();
+      
+      // Fetch attendance
+      const attendanceResponse = await fetch('/api/attendance');
+      const attendanceData = await attendanceResponse.json();
 
-      const employees = await employeesRes.json()
-      const attendance = await attendanceRes.json()
-      const salaries = await salariesRes.json()
-
-      const today = new Date().toISOString().split('T')[0]
-      const todayAttendance = attendance.filter((a: { timestamp: string }) => 
-        a.timestamp.startsWith(today)
-      )
+      interface Employee {
+        status: string;
+      }
 
       setStats({
-        totalEmployees: employees.length,
-        activeEmployees: employees.filter((e: { isActive: boolean }) => e.isActive).length,
-        totalAttendanceToday: todayAttendance.length,
-        pendingSalaries: salaries.filter((s: { isPaid: boolean }) => !s.isPaid).length
-      })
+        totalEmployees: employeesData.data?.employees?.length || 0,
+        activeEmployees: employeesData.data?.employees?.filter((emp: Employee) => emp.status === 'active')?.length || 0,
+        todayAttendance: attendanceData.data?.length || 0,
+        pendingSalaries: 0, // Will be calculated from salary API
+        deviceStatus: deviceData.connected ? 'connected' : 'disconnected'
+      });
+      
     } catch (error) {
-      console.error('Error fetching stats:', error)
+      console.error('Failed to load dashboard data:', error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
-  const checkDeviceStatus = async () => {
-    try {
-      setStatusLoading(true)
-      const response = await fetch('/api/device/status')
-      const status = await response.json()
-      setDeviceStatus(status)
-    } catch (error) {
-      console.error('Error checking device status:', error)
-      setDeviceStatus({ connected: false, error: 'Failed to check device status' })
-    } finally {
-      setStatusLoading(false)
+  const getDeviceStatusIcon = () => {
+    switch (stats.deviceStatus) {
+      case 'connected':
+        return <CheckCircleIcon className="h-5 w-5 text-green-600" />;
+      case 'disconnected':
+        return <AlertCircleIcon className="h-5 w-5 text-red-600" />;
+      default:
+        return <RefreshCwIcon className="h-5 w-5 text-yellow-600 animate-spin" />;
     }
-  }
+  };
 
-  const syncAttendance = async () => {
-    if (!deviceStatus.connected) {
-      alert('ZKTeco device is not connected. Please check your device connection.')
-      return
+  const getDeviceStatusText = () => {
+    switch (stats.deviceStatus) {
+      case 'connected':
+        return 'Connected';
+      case 'disconnected':
+        return 'Disconnected';
+      default:
+        return 'Checking...';
     }
+  };
 
-    setSyncing(true)
-    try {
-      const response = await fetch('/api/attendance/sync', {
-        method: 'POST'
-      })
-      if (response.ok) {
-        alert('Attendance synced successfully!')
-        fetchStats()
-      } else {
-        const error = await response.json()
-        alert(`Sync failed: ${error.error}`)
-      }
-    } catch {
-      alert('Sync failed: Network error')
-    } finally {
-      setSyncing(false)
+  const getDeviceStatusColor = () => {
+    switch (stats.deviceStatus) {
+      case 'connected':
+        return 'text-green-600 bg-green-50 border-green-200';
+      case 'disconnected':
+        return 'text-red-600 bg-red-50 border-red-200';
+      default:
+        return 'text-yellow-600 bg-yellow-50 border-yellow-200';
     }
-  }
-
-  const statCards = [
-    {
-      name: 'Total Employees',
-      stat: stats.totalEmployees,
-      icon: Users,
-      color: 'bg-blue-500'
-    },
-    {
-      name: 'Active Employees',
-      stat: stats.activeEmployees,
-      icon: Users,
-      color: 'bg-green-500'
-    },
-    {
-      name: 'Today\'s Attendance',
-      stat: stats.totalAttendanceToday,
-      icon: Clock,
-      color: 'bg-yellow-500'
-    },
-    {
-      name: 'Pending Salaries',
-      stat: stats.pendingSalaries,
-      icon: DollarSign,
-      color: 'bg-red-500'
-    }
-  ]
+  };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading dashboard...</p>
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-64 mb-8"></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="h-32 bg-gray-200 rounded-xl"></div>
+            ))}
+          </div>
         </div>
       </div>
-    )
+    );
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      <div className="px-4 sm:px-6 lg:px-8 py-8">
-        <div className="sm:flex sm:items-center">
-          <div className="sm:flex-auto">
-            <h1 className="text-2xl font-semibold text-gray-900">Employee Management Dashboard</h1>
-            <p className="mt-2 text-sm text-gray-700">
-              ZKTeco K40 Biometric Attendance System
-            </p>
-          </div>
-          <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none">
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                {statusLoading ? (
-                  <div className="animate-spin h-4 w-4 border-2 border-gray-300 border-t-blue-600 rounded-full"></div>
-                ) : deviceStatus.connected ? (
-                  <div className="flex items-center space-x-2 text-green-600">
-                    <Wifi className="h-4 w-4" />
-                    <span className="text-sm font-medium">Connected</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center space-x-2 text-red-600">
-                    <WifiOff className="h-4 w-4" />
-                    <span className="text-sm font-medium">Disconnected</span>
-                  </div>
-                )}
-              </div>
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Dashboard</h1>
+        <p className="text-gray-600">Welcome to your ZKTeco Employee Management System</p>
+      </div>
 
-              <button
-                onClick={checkDeviceStatus}
-                disabled={statusLoading}
-                className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        {/* Total Employees */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow duration-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Total Employees</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{stats.totalEmployees}</p>
+            </div>
+            <div className="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center">
+              <UsersIcon className="h-6 w-6 text-blue-600" />
+            </div>
+          </div>
+          <div className="mt-4 flex items-center text-sm">
+            <TrendingUpIcon className="h-4 w-4 text-green-500 mr-1" />
+            <span className="text-green-600">{stats.activeEmployees} active</span>
+          </div>
+        </div>
+
+        {/* Today's Attendance */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow duration-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Today&apos;s Attendance</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{stats.todayAttendance}</p>
+            </div>
+            <div className="h-12 w-12 bg-green-100 rounded-lg flex items-center justify-center">
+              <ClockIcon className="h-6 w-6 text-green-600" />
+            </div>
+          </div>
+          <div className="mt-4 flex items-center text-sm">
+            <CalendarIcon className="h-4 w-4 text-blue-500 mr-1" />
+            <span className="text-gray-600">Records logged</span>
+          </div>
+        </div>
+
+        {/* Pending Salaries */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow duration-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Pending Salaries</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{stats.pendingSalaries}</p>
+            </div>
+            <div className="h-12 w-12 bg-orange-100 rounded-lg flex items-center justify-center">
+              <DollarSignIcon className="h-6 w-6 text-orange-600" />
+            </div>
+          </div>
+          <div className="mt-4 flex items-center text-sm">
+            <CreditCardIcon className="h-4 w-4 text-orange-500 mr-1" />
+            <span className="text-gray-600">To be processed</span>
+          </div>
+        </div>
+
+        {/* Device Status */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow duration-200">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Device Status</p>
+              <p className="text-2xl font-bold text-gray-900 mt-1">{getDeviceStatusText()}</p>
+            </div>
+            <div className="h-12 w-12 bg-purple-100 rounded-lg flex items-center justify-center">
+              <MonitorIcon className="h-6 w-6 text-purple-600" />
+            </div>
+          </div>
+          <div className="mt-4">
+            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getDeviceStatusColor()}`}>
+              {getDeviceStatusIcon()}
+              <span className="ml-1">ZKTeco K40</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Quick Actions Grid */}
+        <div className="lg:col-span-2">
+          <h2 className="text-xl font-semibold text-gray-900 mb-6">Quick Actions</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {quickActions.map((action) => (
+              <Link
+                key={action.title}
+                href={action.href}
+                className="group bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-all duration-200 hover:border-gray-300"
               >
-                {statusLoading ? 'Checking...' : 'Check Status'}
-              </button>
-
-              <button
-                onClick={syncAttendance}
-                disabled={syncing || !deviceStatus.connected}
-                className={`inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 ${
-                  deviceStatus.connected 
-                    ? 'bg-blue-600 hover:bg-blue-700' 
-                    : 'bg-gray-400 cursor-not-allowed'
-                }`}
-              >
-                {syncing ? 'Syncing...' : 'Sync Attendance'}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {!deviceStatus.connected && !statusLoading && (
-          <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
-            <div className="flex">
-              <AlertCircle className="h-5 w-5 text-yellow-400" />
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-yellow-800">
-                  ZKTeco Device Not Connected
-                </h3>
-                <div className="mt-2 text-sm text-yellow-700">
-                  <p>
-                    The biometric device is not connected. Please check:
-                  </p>
-                  <ul className="mt-1 list-disc list-inside">
-                    <li>Device is powered on and connected to network</li>
-                    <li>IP address is configured correctly (default: 192.168.1.201)</li>
-                    <li>Network connectivity between server and device</li>
-                  </ul>
-                  <p className="mt-2">
-                    <Link href="/setup" className="font-medium text-yellow-800 underline hover:text-yellow-600">
-                      View setup guide →
-                    </Link>
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {deviceStatus.connected && deviceStatus.info && (
-          <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-md">
-            <div className="flex">
-              <Wifi className="h-5 w-5 text-green-400" />
-              <div className="ml-3">
-                <h3 className="text-sm font-medium text-green-800">
-                  Device Connected Successfully
-                </h3>
-                <div className="mt-1 text-sm text-green-700">
-                  <p>Model: {deviceStatus.info.model || 'ZKTeco K40'}</p>
-                  <p>Serial: {deviceStatus.info.serialNumber || 'N/A'}</p>
-                  <p>Users: {deviceStatus.info.userCount || 0}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {statCards.map((item) => (
-            <div key={item.name} className="overflow-hidden rounded-lg bg-white shadow border border-gray-200">
-              <div className="p-5">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0">
-                    <div className={`${item.color} p-3 rounded-md`}>
-                      <item.icon className="h-6 w-6 text-white" />
-                    </div>
+                <div className="flex items-center space-x-4">
+                  <div className={`h-12 w-12 ${action.color} rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform duration-200`}>
+                    <action.icon className="h-6 w-6 text-white" />
                   </div>
-                  <div className="ml-5 w-0 flex-1">
-                    <dl>
-                      <dt className="text-sm font-medium text-gray-500 truncate">
-                        {item.name}
-                      </dt>
-                      <dd className="text-lg font-medium text-gray-900">{item.stat}</dd>
-                    </dl>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-medium text-gray-900 group-hover:text-blue-600 transition-colors duration-200">
+                      {action.title}
+                    </h3>
+                    <p className="text-sm text-gray-600">{action.description}</p>
                   </div>
+                  <ChevronRightIcon className="h-5 w-5 text-gray-400 group-hover:text-blue-600 transition-colors duration-200" />
                 </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-8">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Link
-              href="/employees"
-              className="relative group bg-white p-6 rounded-lg shadow border border-gray-200 hover:shadow-md transition-shadow"
-            >
-              <div>
-                <span className="rounded-lg inline-flex p-3 bg-blue-50 text-blue-600 ring-4 ring-white">
-                  <Users className="h-6 w-6" />
-                </span>
-              </div>
-              <div className="mt-4">
-                <h3 className="text-lg font-medium text-gray-900">
-                  Manage Employees
-                </h3>
-                <p className="mt-2 text-sm text-gray-500">
-                  Add, edit, or sync employees with ZKTeco device
-                </p>
-              </div>
-            </Link>
-
-            <Link
-              href="/attendance"
-              className="relative group bg-white p-6 rounded-lg shadow border border-gray-200 hover:shadow-md transition-shadow"
-            >
-              <div>
-                <span className="rounded-lg inline-flex p-3 bg-green-50 text-green-600 ring-4 ring-white">
-                  <Clock className="h-6 w-6" />
-                </span>
-              </div>
-              <div className="mt-4">
-                <h3 className="text-lg font-medium text-gray-900">
-                  View Attendance
-                </h3>
-                <p className="mt-2 text-sm text-gray-500">
-                  Track employee attendance records
-                </p>
-              </div>
-            </Link>
-
-            <Link
-              href="/salaries"
-              className="relative group bg-white p-6 rounded-lg shadow border border-gray-200 hover:shadow-md transition-shadow"
-            >
-              <div>
-                <span className="rounded-lg inline-flex p-3 bg-yellow-50 text-yellow-600 ring-4 ring-white">
-                  <DollarSign className="h-6 w-6" />
-                </span>
-              </div>
-              <div className="mt-4">
-                <h3 className="text-lg font-medium text-gray-900">
-                  Calculate Salaries
-                </h3>
-                <p className="mt-2 text-sm text-gray-500">
-                  Process payroll and salary calculations
-                </p>
-              </div>
-            </Link>
+              </Link>
+            ))}
           </div>
         </div>
 
-        <div className="mt-8">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">System Status</h2>
-          <div className="bg-white shadow border border-gray-200 rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <dt className="text-sm font-medium text-gray-500">Last Sync</dt>
-                  <dd className="mt-1 text-sm text-gray-900">
-                    {deviceStatus.connected ? 'Ready to sync' : 'Device not connected'}
-                  </dd>
+        {/* Recent Activity */}
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-6">System Status</h2>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">Database</span>
+                <div className="flex items-center space-x-2">
+                  <CheckCircleIcon className="h-4 w-4 text-green-600" />
+                  <span className="text-sm text-green-600">Connected</span>
                 </div>
-                <div>
-                  <dt className="text-sm font-medium text-gray-500">System Status</dt>
-                  <dd className="mt-1 text-sm text-gray-900">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                      Online
-                    </span>
-                  </dd>
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">API Services</span>
+                <div className="flex items-center space-x-2">
+                  <CheckCircleIcon className="h-4 w-4 text-green-600" />
+                  <span className="text-sm text-green-600">Operational</span>
                 </div>
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">ZKTeco Device</span>
+                <div className="flex items-center space-x-2">
+                  {getDeviceStatusIcon()}
+                  <span className={`text-sm ${stats.deviceStatus === 'connected' ? 'text-green-600' : 'text-red-600'}`}>
+                    {getDeviceStatusText()}
+                  </span>
+                </div>
+              </div>
+              
+              <div className="pt-4 border-t border-gray-200">
+                <button
+                  onClick={loadDashboardData}
+                  className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors duration-200"
+                >
+                  <RefreshCwIcon className="h-4 w-4" />
+                  <span>Refresh Status</span>
+                </button>
               </div>
             </div>
           </div>
         </div>
       </div>
     </div>
-  )
+  );
 }

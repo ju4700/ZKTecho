@@ -62,8 +62,10 @@ export interface ConnectionStatus {
 /**
  * Enhanced ZKTeco Service following official protocol documentation
  * Based on ZKTeco protocol specifications from zk-protocol-master
+ * Implements singleton pattern to prevent connection conflicts
  */
 export class EnhancedZKTecoService {
+  private static instance: EnhancedZKTecoService | null = null
   private zkLib: any
   private ip: string
   private port: number
@@ -74,8 +76,11 @@ export class EnhancedZKTecoService {
   private sessionId: string = ''
   private maxRetries: number = 3
   private retryDelay: number = 1000
+  private connectionMutex: Promise<boolean> | null = null
+  private lastOperationTime: number = 0
+  private operationCooldown: number = 1000 // 1 second between operations
 
-  constructor(ip?: string, port?: number, timeout?: number) {
+  private constructor(ip?: string, port?: number, timeout?: number) {
     this.ip = ip || process.env.ZKTECO_IP || '192.168.1.201'
     this.port = port || parseInt(process.env.ZKTECO_PORT || '4370', 10)
     this.inport = Math.floor(Math.random() * 1000) + 5200
@@ -84,18 +89,53 @@ export class EnhancedZKTecoService {
     console.log(`Enhanced ZKTeco Service initialized with IP: ${this.ip}, Port: ${this.port}, InPort: ${this.inport}, Timeout: ${this.timeout}`)
   }
 
+  public static getInstance(ip?: string, port?: number, timeout?: number): EnhancedZKTecoService {
+    if (!EnhancedZKTecoService.instance) {
+      EnhancedZKTecoService.instance = new EnhancedZKTecoService(ip, port, timeout)
+    }
+    return EnhancedZKTecoService.instance
+  }
+
+  public static resetInstance(): void {
+    if (EnhancedZKTecoService.instance) {
+      EnhancedZKTecoService.instance.forceDisconnect()
+      EnhancedZKTecoService.instance = null
+    }
+  }
+
   /**
-   * Establish connection following ZKTeco protocol
+   * Establish connection following ZKTeco protocol with mutex protection
    * 1. Create socket connection (TCP/IP port 4370)
    * 2. Send CMD_CONNECT
    * 3. Set SDKBuild=1 parameter
    */
   async connect(): Promise<boolean> {
+    // Implement connection mutex to prevent concurrent connections
+    if (this.connectionMutex) {
+      await this.connectionMutex
+    }
+
+    // Check operation cooldown
+    const now = Date.now()
+    const timeSinceLastOp = now - this.lastOperationTime
+    if (timeSinceLastOp < this.operationCooldown) {
+      await new Promise(resolve => setTimeout(resolve, this.operationCooldown - timeSinceLastOp))
+    }
+
     if (this.isConnecting) {
       console.log('⏳ Already connecting, waiting...')
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      await new Promise(resolve => setTimeout(resolve, 2000))
       return this.connectionStatus.isConnected
     }
+
+    this.connectionMutex = this._performConnection()
+    const result = await this.connectionMutex
+    this.connectionMutex = null
+    this.lastOperationTime = Date.now()
+    return result
+  }
+
+  private async _performConnection(): Promise<boolean> {
 
     let retryCount = 0
     while (retryCount < this.maxRetries) {
@@ -184,6 +224,11 @@ export class EnhancedZKTecoService {
       if (this.zkLib && this.connectionStatus.isConnected) {
         // Try to send CMD_EXIT first (protocol compliance)
         try {
+          // Remove any listeners safely before disconnecting
+          if (this.zkLib && typeof this.zkLib.removeAllListeners === 'function') {
+            this.zkLib.removeAllListeners()
+          }
+          
           await Promise.race([
             this.zkLib.disconnect(),
             new Promise(resolve => setTimeout(resolve, 2000))
@@ -197,6 +242,17 @@ export class EnhancedZKTecoService {
     } catch (error) {
       console.error('ZKTeco disconnect error:', error)
     } finally {
+      // Ensure cleanup
+      if (this.zkLib) {
+        try {
+          if (typeof this.zkLib.removeAllListeners === 'function') {
+            this.zkLib.removeAllListeners()
+          }
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+      
       this.zkLib = null
       this.connectionStatus = { isConnected: false }
       this.sessionId = ''
@@ -210,13 +266,22 @@ export class EnhancedZKTecoService {
     try {
       if (this.zkLib) {
         try {
+          // Remove listeners before disconnecting
+          if (typeof this.zkLib.removeAllListeners === 'function') {
+            this.zkLib.removeAllListeners()
+          }
+          
+          // Set a very short timeout for emergency disconnect
           await Promise.race([
             this.zkLib.disconnect(),
-            new Promise(resolve => setTimeout(resolve, 1000))
+            new Promise(resolve => setTimeout(resolve, 500))
           ])
         } catch {
-          console.log('Force disconnect completed')
+          // Ignore disconnect errors during cleanup
         }
+        
+        // Force null the connection object to prevent reuse
+        this.zkLib = null
       }
     } catch {
       // Ignore all errors during force disconnect
@@ -224,6 +289,7 @@ export class EnhancedZKTecoService {
       this.zkLib = null
       this.connectionStatus = { isConnected: false }
       this.sessionId = ''
+      this.isConnecting = false
     }
   }
 
@@ -235,10 +301,17 @@ export class EnhancedZKTecoService {
   }
 
   /**
-   * Get users following protocol specifications
+   * Get users following protocol specifications with connection management
    * Uses CMD_DATA_WRRQ to read all user IDs
    */
   async getUsers(): Promise<DeviceUser[]> {
+    // Check operation cooldown
+    const now = Date.now()
+    const timeSinceLastOp = now - this.lastOperationTime
+    if (timeSinceLastOp < this.operationCooldown) {
+      await new Promise(resolve => setTimeout(resolve, this.operationCooldown - timeSinceLastOp))
+    }
+
     let retryCount = 0
     
     while (retryCount < this.maxRetries) {
@@ -253,13 +326,15 @@ export class EnhancedZKTecoService {
         // Get users with timeout protection
         const usersPromise = this.zkLib.getUsers()
         const timeoutPromise = new Promise<never>((_, reject) => 
-          setTimeout(() => reject(new Error('Get users timeout')), 8000)
+          setTimeout(() => reject(new Error('Get users timeout')), 6000) // Reduced timeout
         )
         
         const users = await Promise.race([usersPromise, timeoutPromise])
         console.log('📥 Raw user data from device:', users)
         
+        // Ensure clean disconnect
         await this.disconnect()
+        this.lastOperationTime = Date.now()
         
         // Handle different data formats from the device
         let userArray = users
@@ -293,8 +368,8 @@ export class EnhancedZKTecoService {
         
         retryCount++
         if (retryCount < this.maxRetries) {
-          console.log(`⏳ Retrying getUsers in ${this.retryDelay}ms...`)
-          await new Promise(resolve => setTimeout(resolve, this.retryDelay))
+          console.log(`⏳ Retrying getUsers in ${this.retryDelay * retryCount}ms...`)
+          await new Promise(resolve => setTimeout(resolve, this.retryDelay * retryCount))
         }
       }
     }
@@ -364,82 +439,95 @@ export class EnhancedZKTecoService {
   }
 
   /**
-   * Get device information with retry logic
+   * Get device information with improved connection management
    */
-  async getDeviceInfo(): Promise<DeviceInfo | null> {
-    let retryCount = 0
+  async getDeviceInfo(): Promise<any> {
+    console.log(`🔍 Fetching device information...`);
     
-    while (retryCount < this.maxRetries) {
-      try {
-        const connected = await this.connect()
-        if (!connected) {
-          throw new Error('Failed to establish connection')
-        }
-
-        console.log('🔍 Fetching device information...')
-
-        // Get device info with timeout
-        const infoPromise = this.zkLib.getInfo()
-        const timeoutPromise = new Promise<never>((_, reject) => 
-          setTimeout(() => reject(new Error('Get device info timeout')), 5000)
-        )
-        
-        const info = await Promise.race([infoPromise, timeoutPromise])
-        
-        // Try to get additional info (non-critical)
-        let deviceName = 'ZKTeco-K40'
-        let firmware = 'Unknown'
-        let platform = 'Unknown'
-        let serialNumber = 'Unknown'
-        
-        try {
-          const additionalInfoPromise = Promise.all([
-            this.zkLib.getDeviceName?.() || Promise.resolve('ZKTeco-K40'),
-            this.zkLib.getFirmware?.() || Promise.resolve('Unknown'),
-            this.zkLib.getPlatform?.() || Promise.resolve('Unknown'),
-            this.zkLib.getSerialNumber?.() || Promise.resolve('Unknown')
-          ])
-          
-          const additionalTimeout = new Promise<never>((_, reject) => 
-            setTimeout(() => reject(new Error('Additional info timeout')), 3000)
-          )
-          
-          const [name, fw, plat, sn] = await Promise.race([additionalInfoPromise, additionalTimeout])
-          deviceName = name || deviceName
-          firmware = fw || firmware
-          platform = plat || platform
-          serialNumber = sn || serialNumber
-        } catch (additionalError) {
-          console.warn('Could not fetch additional device info:', additionalError)
-        }
-        
-        await this.disconnect()
-
-        const deviceInfo = {
-          ...info,
-          deviceName,
-          fpVersion: firmware,
-          platform,
-          deviceId: serialNumber
-        }
-        
-        console.log('📊 Device info:', deviceInfo)
-        return deviceInfo
-        
-      } catch (error) {
-        console.error(`❌ Error getting device info (attempt ${retryCount + 1}):`, error)
-        await this.forceDisconnect()
-        
-        retryCount++
-        if (retryCount < this.maxRetries) {
-          console.log(`⏳ Retrying getDeviceInfo in ${this.retryDelay}ms...`)
-          await new Promise(resolve => setTimeout(resolve, this.retryDelay))
-        }
-      }
+    if (!this.connectionStatus.isConnected || !this.zkLib) {
+      await this.connect();
     }
-    
-    console.error(`❌ Failed to get device info after ${this.maxRetries} attempts`)
-    return null
+
+    if (!this.zkLib) {
+      throw new Error('Failed to establish connection');
+    }
+
+    try {
+      // Get basic info first
+      const info = await this.zkLib.getInfo();
+      
+      if (!info) {
+        throw new Error('Failed to get device info');
+      }
+
+      console.log(`📊 Basic device info retrieved:`, info);
+
+      // Try to get additional info while still connected
+      let additionalInfo = {
+        deviceName: 'ZKTeco-K40',
+        fpVersion: 'Unknown',
+        platform: 'Unknown',
+        deviceId: 'Unknown'
+      };
+
+      try {
+        // Check if methods exist and connection is still active
+        if (this.connectionStatus.isConnected && this.zkLib) {
+          const promises = [];
+          
+          if (typeof this.zkLib.getDeviceName === 'function') {
+            promises.push(this.zkLib.getDeviceName().catch(() => 'ZKTeco-K40'));
+          } else {
+            promises.push(Promise.resolve('ZKTeco-K40'));
+          }
+          
+          if (typeof this.zkLib.getFirmware === 'function') {
+            promises.push(this.zkLib.getFirmware().catch(() => 'Unknown'));
+          } else {
+            promises.push(Promise.resolve('Unknown'));
+          }
+          
+          if (typeof this.zkLib.getPlatform === 'function') {
+            promises.push(this.zkLib.getPlatform().catch(() => 'Unknown'));
+          } else {
+            promises.push(Promise.resolve('Unknown'));
+          }
+          
+          if (typeof this.zkLib.getSerialNumber === 'function') {
+            promises.push(this.zkLib.getSerialNumber().catch(() => 'Unknown'));
+          } else {
+            promises.push(Promise.resolve('Unknown'));
+          }
+
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Additional info timeout')), 2000)
+          );
+
+          const [deviceName, fpVersion, platform, deviceId] = await Promise.race([
+            Promise.all(promises),
+            timeoutPromise
+          ]) as string[];
+
+          additionalInfo = { deviceName, fpVersion, platform, deviceId };
+          console.log(`📊 Additional device info retrieved:`, additionalInfo);
+        }
+      } catch (error) {
+        console.log(`Could not fetch additional device info:`, error);
+      }
+
+      const result = {
+        ...info,
+        ...additionalInfo
+      };
+
+      console.log(`📊 Device info:`, result);
+      return result;
+    } catch (error) {
+      console.error(`❌ Error getting device info:`, error);
+      throw error;
+    } finally {
+      await this.disconnect();
+    }
   }
 
   /**
@@ -569,12 +657,7 @@ export class EnhancedZKTecoService {
   }
 }
 
-// Create singleton instance
-let enhancedZktecoService: EnhancedZKTecoService | null = null
-
-export const getEnhancedZKTecoService = (): EnhancedZKTecoService => {
-  if (!enhancedZktecoService) {
-    enhancedZktecoService = new EnhancedZKTecoService()
-  }
-  return enhancedZktecoService
+// Export singleton getter function
+export const getEnhancedZKTecoService = (ip?: string, port?: number, timeout?: number): EnhancedZKTecoService => {
+  return EnhancedZKTecoService.getInstance(ip, port, timeout)
 }

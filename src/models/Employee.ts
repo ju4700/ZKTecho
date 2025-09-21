@@ -89,7 +89,8 @@ const employeeSchema = new mongoose.Schema({
   // ZKTeco Device Integration
   deviceUserId: {
     type: String,
-    sparse: true
+    sparse: true,
+    index: true
   },
   fingerprintEnrolled: {
     type: Boolean,
@@ -157,7 +158,6 @@ employeeSchema.virtual('deviceStatusDisplay').get(function() {
 })
 
 // Index for efficient queries
-employeeSchema.index({ deviceUserId: 1 })
 employeeSchema.index({ status: 1 })
 employeeSchema.index({ department: 1 })
 employeeSchema.index({ deviceSyncStatus: 1 })
