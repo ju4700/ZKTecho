@@ -25,7 +25,6 @@ export default function AddEmployeeForm({ isOpen, onClose, onSuccess }: AddEmplo
   })
   const [loading, setLoading] = useState(false)
   const [enrollmentStep, setEnrollmentStep] = useState<'form' | 'enrollment' | 'completed'>('form')
-  const [createdEmployee, setCreatedEmployee] = useState<any>(null)
   const [steps, setSteps] = useState<EmployeeCreationStep[]>([
     { id: 'database', label: 'Save to Database', status: 'pending' },
     { id: 'device', label: 'Create User in ZKTeco Device', status: 'pending' },
@@ -62,7 +61,6 @@ export default function AddEmployeeForm({ isOpen, onClose, onSuccess }: AddEmplo
       const result = await response.json()
 
       if (response.ok) {
-        setCreatedEmployee(result)
         updateStepStatus('database', 'completed', 'Employee saved successfully')
         
         if (result.deviceSyncSuccess) {
@@ -124,7 +122,6 @@ export default function AddEmployeeForm({ isOpen, onClose, onSuccess }: AddEmplo
       monthlySalary: ''
     })
     setEnrollmentStep('form')
-    setCreatedEmployee(null)
     setSteps([
       { id: 'database', label: 'Save to Database', status: 'pending' },
       { id: 'device', label: 'Create User in ZKTeco Device', status: 'pending' },
