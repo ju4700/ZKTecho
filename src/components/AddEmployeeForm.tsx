@@ -1,7 +1,14 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { X, Fingerprint, CheckCircle, AlertCircle } from 'lucide-react'
+
+interface DeviceUser {
+  userId: string;
+  name: string;
+  role: number;
+  cardno?: string;
+}
 
 interface AddEmployeeFormProps {
   isOpen: boolean
@@ -20,15 +27,43 @@ export default function AddEmployeeForm({ isOpen, onClose, onSuccess }: AddEmplo
   const [formData, setFormData] = useState({
     employeeId: '',
     name: '',
+    email: '',
     phone: '',
-    monthlySalary: ''
+    department: '',
+    position: '',
+    hourlyRate: '',
+    deviceUserId: '' // Link to existing ZKTeco user
   })
+  const [deviceUsers, setDeviceUsers] = useState<DeviceUser[]>([])
+  const [loadingDeviceUsers, setLoadingDeviceUsers] = useState(false)
+
+  // Fetch device users when form opens
+  useEffect(() => {
+    if (isOpen) {
+      fetchDeviceUsers()
+    }
+  }, [isOpen])
+
+  const fetchDeviceUsers = async () => {
+    setLoadingDeviceUsers(true)
+    try {
+      const response = await fetch('/api/device/users')
+      if (response.ok) {
+        const data = await response.json()
+        setDeviceUsers(data.users || [])
+      }
+    } catch (error) {
+      console.error('Error fetching device users:', error)
+    } finally {
+      setLoadingDeviceUsers(false)
+    }
+  }
   const [loading, setLoading] = useState(false)
   const [enrollmentStep, setEnrollmentStep] = useState<'form' | 'enrollment' | 'completed'>('form')
   const [steps, setSteps] = useState<EmployeeCreationStep[]>([
     { id: 'database', label: 'Save to Database', status: 'pending' },
-    { id: 'device', label: 'Create User in ZKTeco Device', status: 'pending' },
-    { id: 'fingerprint', label: 'Enroll Fingerprint', status: 'pending' }
+    { id: 'device', label: 'Link to ZKTeco Device User', status: 'pending' },
+    { id: 'fingerprint', label: 'Verify Fingerprint Status', status: 'pending' }
   ])
 
   const updateStepStatus = (stepId: string, status: EmployeeCreationStep['status'], message?: string) => {
@@ -54,7 +89,7 @@ export default function AddEmployeeForm({ isOpen, onClose, onSuccess }: AddEmplo
         },
         body: JSON.stringify({
           ...formData,
-          monthlySalary: parseFloat(formData.monthlySalary) || 0,
+          hourlyRate: parseFloat(formData.hourlyRate) || 0,
         }),
       })
 
@@ -118,14 +153,18 @@ export default function AddEmployeeForm({ isOpen, onClose, onSuccess }: AddEmplo
     setFormData({
       employeeId: '',
       name: '',
+      email: '',
       phone: '',
-      monthlySalary: ''
+      department: '',
+      position: '',
+      hourlyRate: '',
+      deviceUserId: ''
     })
     setEnrollmentStep('form')
     setSteps([
       { id: 'database', label: 'Save to Database', status: 'pending' },
-      { id: 'device', label: 'Create User in ZKTeco Device', status: 'pending' },
-      { id: 'fingerprint', label: 'Enroll Fingerprint', status: 'pending' }
+      { id: 'device', label: 'Link to ZKTeco Device User', status: 'pending' },
+      { id: 'fingerprint', label: 'Verify Fingerprint Status', status: 'pending' }
     ])
     onClose()
   }
@@ -217,18 +256,92 @@ export default function AddEmployeeForm({ isOpen, onClose, onSuccess }: AddEmplo
 
             <div>
               <label className="block text-sm font-medium text-gray-700">
-                Monthly Salary ($) *
+                Email *
+              </label>
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleChange}
+                required
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border px-3 py-2"
+                placeholder="john.doe@company.com"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Department *
+              </label>
+              <input
+                type="text"
+                name="department"
+                value={formData.department}
+                onChange={handleChange}
+                required
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border px-3 py-2"
+                placeholder="Engineering"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Position *
+              </label>
+              <input
+                type="text"
+                name="position"
+                value={formData.position}
+                onChange={handleChange}
+                required
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border px-3 py-2"
+                placeholder="Software Engineer"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Link to ZKTeco Device User *
+              </label>
+              <select
+                name="deviceUserId"
+                value={formData.deviceUserId}
+                onChange={(e) => setFormData({ ...formData, deviceUserId: e.target.value })}
+                required
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border px-3 py-2"
+              >
+                <option value="">Select existing ZKTeco user...</option>
+                {loadingDeviceUsers ? (
+                  <option disabled>Loading device users...</option>
+                ) : (
+                  deviceUsers.map((user) => (
+                    <option key={user.userId} value={user.userId}>
+                      ID: {user.userId} - {user.name || 'Unnamed User'} (Role: {user.role})
+                    </option>
+                  ))
+                )}
+              </select>
+              {deviceUsers.length === 0 && !loadingDeviceUsers && (
+                <p className="mt-1 text-sm text-yellow-600">
+                  No device users found. Please ensure ZKTeco device is connected.
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Hourly Rate ($) *
               </label>
               <input
                 type="number"
-                name="monthlySalary"
-                value={formData.monthlySalary}
+                name="hourlyRate"
+                value={formData.hourlyRate}
                 onChange={handleChange}
                 required
                 min="0"
                 step="0.01"
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border px-3 py-2"
-                placeholder="3000.00"
+                placeholder="25.00"
               />
             </div>
 

@@ -74,18 +74,36 @@ export default function DeviceManagementPage() {
   const fetchDeviceStatus = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/device/status');
+      const response = await fetch('/api/device/quick-status');
       const data = await response.json();
-      setDeviceStatus(data);
+      
+      if (data.isConnected) {
+        setDeviceStatus({
+          connected: true,
+          ip: process.env.NEXT_PUBLIC_ZKTECO_IP || '192.168.1.201',
+          port: process.env.NEXT_PUBLIC_ZKTECO_PORT ? parseInt(process.env.NEXT_PUBLIC_ZKTECO_PORT) : 4370,
+          model: data.deviceInfo?.deviceName || 'ZKTeco K40',
+          serialNumber: data.deviceInfo?.serialNumber || 'Unknown',
+          version: 'Unknown',
+          userCount: data.deviceInfo?.userCount || 0,
+          recordCount: data.deviceInfo?.attendanceLogCount || 0,
+          freeMemory: 0,
+          totalMemory: 0
+        });
+      } else {
+        setDeviceStatus({
+          connected: false
+        });
+      }
     } catch (error) {
-      console.error('Error fetching device status:', error);
-      setDeviceStatus({ connected: false });
+      console.error('Failed to fetch device status:', error);
+      setDeviceStatus({
+        connected: false
+      });
     } finally {
       setLoading(false);
     }
-  };
-
-  const fetchDeviceUsers = async () => {
+  };  const fetchDeviceUsers = async () => {
     try {
       const response = await fetch('/api/device/users');
       if (response.ok) {

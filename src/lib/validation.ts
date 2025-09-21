@@ -303,8 +303,7 @@ export function validateEmployeeData(data: unknown): {
   phone?: string
   department?: string
   position?: string
-  monthlySalary: number
-  hourlyRate?: number
+  hourlyRate: number
 } {
   const validator = new Validator()
 
@@ -314,8 +313,7 @@ export function validateEmployeeData(data: unknown): {
   const phone = validator.phone('phone', (data as Record<string, unknown>)?.phone)
   const department = validator.string('department', (data as Record<string, unknown>)?.department, { maxLength: 50 })
   const position = validator.string('position', (data as Record<string, unknown>)?.position, { maxLength: 50 })
-  const monthlySalary = validator.number('monthlySalary', (data as Record<string, unknown>)?.monthlySalary, { required: true, min: 0 })!
-  const hourlyRate = validator.number('hourlyRate', (data as Record<string, unknown>)?.hourlyRate, { min: 0 })
+  const hourlyRate = validator.number('hourlyRate', (data as Record<string, unknown>)?.hourlyRate, { required: true, min: 0 })!
 
   validator.throwIfInvalid()
 
@@ -326,7 +324,6 @@ export function validateEmployeeData(data: unknown): {
     phone,
     department,
     position,
-    monthlySalary,
     hourlyRate
   }
 }
