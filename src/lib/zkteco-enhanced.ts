@@ -282,7 +282,7 @@ export class EnhancedZKTecoService {
             group: user.group || 1,
             verificationMode: user.verificationMode || 0
           }
-        }).filter((user: any) => user.userId && user.userId.trim() !== '') // Remove users without valid IDs
+        }).filter((user: any) => user.userId && String(user.userId).trim() !== '') // Remove users without valid IDs
         
         console.log('✅ Formatted users:', formattedUsers)
         return formattedUsers

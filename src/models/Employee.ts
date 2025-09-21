@@ -89,7 +89,6 @@ const employeeSchema = new mongoose.Schema({
   // ZKTeco Device Integration
   deviceUserId: {
     type: String,
-    index: true,
     sparse: true
   },
   fingerprintEnrolled: {
