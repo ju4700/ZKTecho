@@ -43,3 +43,7 @@ next-env.d.ts
 # Database
 *.db
 *.db-journal
+.github
+/.vscode
+/.github
+.vscode
