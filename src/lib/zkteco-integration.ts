@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { zktecoService } from './zkteco'
+import { getEnhancedZKTecoService } from './zkteco-enhanced'
 import Employee from '../models/Employee'
 import connectToMongoDB from './mongodb'
 
@@ -41,16 +41,28 @@ class ZKTecoIntegrationService implements DeviceIntegrationService {
     console.log('🔧 ZKTeco Integration Service initialized')
   }
 
+  private get zkService() {
+    return getEnhancedZKTecoService()
+  }
+
   async createEmployeeOnDevice(employee: any): Promise<DeviceUserCreationResult> {
     try {
       console.log(`👤 Creating employee ${employee.name} on ZKTeco device...`)
       
-      // Get next available device user ID
-      const deviceUserId = await zktecoService.getNextAvailableUserId()
+      // We need to generate a numeric ID for the device if one doesn't exist
+      // ZKTeco devices typically use numeric IDs
+      let deviceUserId = employee.deviceUserId
+      
+      if (!deviceUserId) {
+         // Simple numeric generation strategy if not provided
+         // In a real app, you might want a counter in DB
+         deviceUserId = Math.floor(Math.random() * 10000).toString()
+      }
+      
       console.log(`🆔 Assigned device user ID: ${deviceUserId}`)
       
       // Create user on device
-      const success = await zktecoService.addUser(
+      const success = await this.zkService.addUser(
         deviceUserId,
         employee.name,
         '', // password (empty for fingerprint-only)
@@ -94,7 +106,7 @@ class ZKTecoIntegrationService implements DeviceIntegrationService {
     try {
       console.log(`🗑️ Deleting employee with device ID ${deviceUserId}...`)
       
-      const success = await zktecoService.deleteUser(deviceUserId)
+      const success = await this.zkService.deleteUser(deviceUserId)
       
       if (success) {
         // Update employee in database
@@ -136,7 +148,7 @@ class ZKTecoIntegrationService implements DeviceIntegrationService {
         return result.success
       } else {
         // Update existing user on device
-        const success = await zktecoService.addUser(
+        const success = await this.zkService.addUser(
           employee.deviceUserId,
           employee.name,
           '',
@@ -162,21 +174,22 @@ class ZKTecoIntegrationService implements DeviceIntegrationService {
     try {
       console.log(`👆 Starting fingerprint enrollment for user ${deviceUserId}...`)
       
-      // Note: zklib-js doesn't have direct fingerprint enrollment
-      // This would typically require physical interaction with the device
-      // For now, we'll mark as enrolled after successful user creation
+      // Use the enhanced service's startFingerprintEnrollment
+      // We'll try to enroll finger index 0 (usually right thumb or index)
+      const success = await this.zkService.startFingerprintEnrollment(deviceUserId, 0)
       
-      await connectToMongoDB()
-      const employee = await Employee.findOne({ deviceUserId })
-      
-      if (employee) {
-        employee.fingerprintEnrolled = true
-        employee.deviceSyncStatus = 'synced'
-        employee.lastDeviceSync = new Date()
-        await employee.save()
+      if (success) {
+        await connectToMongoDB()
+        const employee = await Employee.findOne({ deviceUserId })
         
-        console.log(`✅ Fingerprint enrollment marked for user ${deviceUserId}`)
-        return true
+        if (employee) {
+          // Note: The actual enrollment completion happens on the device.
+          // We mark it as 'pending' or similar if we had that state, 
+          // but for now we assume if the command succeeded, the user will do it.
+          // Ideally, we wait for a regEvent from the device.
+          console.log(`✅ Fingerprint enrollment command sent for user ${deviceUserId}`)
+          return true
+        }
       }
       
       return false
@@ -189,7 +202,7 @@ class ZKTecoIntegrationService implements DeviceIntegrationService {
   async verifyFingerprint(deviceUserId: string): Promise<boolean> {
     try {
       // Check if user exists on device
-      const users = await zktecoService.getUsers()
+      const users = await this.zkService.getUsers()
       const deviceUser = users.find(user => user.userId === deviceUserId)
       
       return !!deviceUser
@@ -203,11 +216,13 @@ class ZKTecoIntegrationService implements DeviceIntegrationService {
     try {
       console.log('📥 Syncing attendance logs from device...')
       
-      const logs = await zktecoService.getAttendanceLogs()
+      const logs = await this.zkService.getAttendanceLogs()
       console.log(`📊 Retrieved ${logs.length} attendance logs from device`)
       
       if (logs.length > 0) {
         await this.processAttendanceLogs(logs)
+        // Optionally clear logs after sync if configured
+        // await this.zkService.clearAttendanceLog()
       }
       
       return logs.length
@@ -223,21 +238,56 @@ class ZKTecoIntegrationService implements DeviceIntegrationService {
       
       await connectToMongoDB()
       
+      // Import Attendance model dynamically to avoid circular deps if any
+      const { default: Attendance } = await import('../models/Attendance')
+      
+      let processedCount = 0
+      
       for (const log of logs) {
         // Find employee by device user ID
         const employee = await Employee.findOne({ deviceUserId: log.deviceUserId })
         
         if (!employee) {
-          console.warn(`⚠️ Employee not found for device user ID: ${log.deviceUserId}`)
+          // console.warn(`⚠️ Employee not found for device user ID: ${log.deviceUserId}`)
+          continue
+        }
+
+        // Check if this log already exists to avoid duplicates
+        const existingLog = await Attendance.findOne({
+          deviceUserId: log.deviceUserId,
+          timestamp: log.timestamp
+        })
+
+        if (existingLog) {
           continue
         }
         
-        // Process the log and update attendance records
-        // This would involve complex logic to match clock-in/out pairs
-        console.log(`✅ Processed log for employee ${employee.name}: ${log.timestamp}`)
+        // Determine check-in/out type based on time or device status
+        // For simplicity, we might toggle or use time of day
+        // ZKTeco 'attendanceType' might be 0/1/4/5 etc.
+        // 0=CheckIn, 1=CheckOut, 4=OvertimeIn, 5=OvertimeOut
+        let type = 'CHECK_IN'
+        if (log.attendanceType === 1 || log.attendanceType === 5) {
+          type = 'CHECK_OUT'
+        } else {
+          // Fallback logic: if morning -> IN, if afternoon -> OUT
+          const hour = new Date(log.timestamp).getHours()
+          if (hour > 13) type = 'CHECK_OUT'
+        }
+
+        await Attendance.create({
+          employeeId: employee._id,
+          deviceUserId: log.deviceUserId,
+          timestamp: log.timestamp,
+          type,
+          deviceId: log.deviceId || 'ZKTeco'
+        })
+        
+        processedCount++
+        console.log(`✅ Processed log for employee ${employee.name}: ${log.timestamp} (${type})`)
       }
       
-      console.log('✅ Attendance log processing completed')
+      console.log(`✅ Attendance log processing completed. Added ${processedCount} new records.`)
     } catch (error) {
       console.error('Error processing attendance logs:', error)
     }
@@ -252,7 +302,23 @@ class ZKTecoIntegrationService implements DeviceIntegrationService {
       
       console.log('🔴 Starting real-time attendance monitoring...')
       
-      // Set up periodic sync (every 30 seconds)
+      // 1. Subscribe to real-time events
+      const eventSuccess = await this.zkService.subscribeToEvents(
+        (log: any) => {
+          // Handle real-time attendance log
+          console.log('⚡ Real-time attendance received:', log)
+          this.processAttendanceLogs([log])
+        },
+        (score: number) => {
+          console.log('⚡ Real-time fingerprint score:', score)
+        }
+      )
+
+      if (!eventSuccess) {
+        console.warn('⚠️ Failed to subscribe to real-time events, falling back to polling')
+      }
+
+      // 2. Set up periodic sync (every 30 seconds) as backup/polling
       this.monitoringInterval = setInterval(async () => {
         try {
           await this.syncAttendanceFromDevice()
@@ -275,20 +341,27 @@ class ZKTecoIntegrationService implements DeviceIntegrationService {
       clearInterval(this.monitoringInterval)
       this.monitoringInterval = undefined
     }
+    
+    // Stop events
+    if (this.zkService.stopEvents) {
+        this.zkService.stopEvents()
+    }
+
     this.isMonitoring = false
     console.log('⏹️ Real-time monitoring stopped')
   }
 
   async getDeviceStatus(): Promise<any> {
     try {
-      const info = await zktecoService.getDeviceInfo()
-      const users = await zktecoService.getUsers()
+      const info = await this.zkService.getDeviceInfo()
+      
+      // We don't want to call getUsers every time as it's slow
+      // const users = await this.zkService.getUsers()
       
       return {
         connected: true,
         deviceInfo: info,
-        userCount: users.length,
-        users: users,
+        // userCount: users.length,
         lastSync: new Date(),
         monitoring: this.isMonitoring
       }
@@ -310,7 +383,7 @@ class ZKTecoIntegrationService implements DeviceIntegrationService {
       this.stopRealTimeMonitoring()
       
       // Disconnect and reconnect
-      await zktecoService.disconnect()
+      await this.zkService.forceDisconnect()
       
       console.log('✅ Device reset completed')
       return true
@@ -325,7 +398,7 @@ class ZKTecoIntegrationService implements DeviceIntegrationService {
     try {
       await connectToMongoDB()
       const employees = await Employee.find({ status: 'active' })
-      const deviceUsers = await zktecoService.getUsers()
+      const deviceUsers = await this.zkService.getUsers()
       
       return employees.map(emp => {
         const deviceUser = deviceUsers.find(du => du.userId === emp.deviceUserId)

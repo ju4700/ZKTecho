@@ -775,35 +775,6 @@ export class EnhancedZKTecoService {
     try {
       const connected = await this.connect()
       if (!connected) {
-        throw new Error('Failed to establish connection')
-      }
-
-      console.log(`👆 Starting fingerprint enrollment for user ${userId}, finger ${fingerIndex}`)
-
-      // Note: This may need to be implemented at a lower level using CMD_STARTENROLL
-      // For now, using the library's built-in method if available
-      if (this.zkLib.startEnroll) {
-        const enrollPromise = this.zkLib.startEnroll(parseInt(userId, 10), fingerIndex)
-        const timeoutPromise = new Promise<never>((_, reject) => 
-          setTimeout(() => reject(new Error('Start enrollment timeout')), 5000)
-        )
-        
-        await Promise.race([enrollPromise, timeoutPromise])
-        
-        console.log(`✅ Fingerprint enrollment started for user ${userId}`)
-        return true
-      } else {
-        console.warn('⚠️ Fingerprint enrollment not supported by library')
-        await this.disconnect()
-        return false
-      }
-      
-    } catch (error) {
-      console.error(`❌ Failed to start fingerprint enrollment:`, error)
-      await this.forceDisconnect()
-      return false
-    }
-  }
 }
 
 // Export singleton getter function
