@@ -15,8 +15,15 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "ZKTeco Employee Management System",
-  description: "Professional employee management and attendance tracking system integrated with ZKTeco biometric devices",
-  keywords: ["employee management", "attendance tracking", "biometric", "ZKTeco", "payroll"],
+  description:
+    "Professional employee management and attendance tracking system integrated with ZKTeco biometric devices",
+  keywords: [
+    "employee management",
+    "attendance tracking",
+    "biometric",
+    "ZKTeco",
+    "payroll",
+  ],
   authors: [{ name: "ZKTeco Solutions" }],
   viewport: "width=device-width, initial-scale=1",
 };
@@ -27,11 +34,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased h-full bg-gray-50`}>
-        <div className="min-h-full">
+    <html lang="en" className="h-full antialiased">
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} h-full bg-background text-foreground`}
+      >
+        <div className="min-h-full flex flex-col">
           <Navigation />
-          <main className="pb-16">
+          <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
             {children}
           </main>
         </div>
